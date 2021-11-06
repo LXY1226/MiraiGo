@@ -1,7 +1,9 @@
 # MiraiGo
+
 qq-android协议的golang实现 移植于mirai
 
 # 警告
+
 本项目为协议实现，api非常原始，并不推荐使用。
 
 建议基于 [go-cqhttp](https://github.com/Mrs4s/go-cqhttp) 使用框架开发。
@@ -9,7 +11,9 @@ qq-android协议的golang实现 移植于mirai
 同时提供不基于 CQHTTP 的原生框架 [MiraiGo-Template](https://github.com/Logiase/MiraiGo-Template) 进行开发。
 
 # 已完成功能/开发计划
+
 #### 登录
+
 - [x] 账号密码登录
 - [x] 二维码登录
 - [x] 验证码提交
@@ -17,6 +21,7 @@ qq-android协议的golang实现 移植于mirai
 - [x] 错误信息解析
 
 #### 消息类型
+
 - [x] 文本
 - [x] 图片
 - [x] 语音
@@ -31,13 +36,14 @@ qq-android协议的golang实现 移植于mirai
 - [x] 群文件(上传与接收信息)
 
 #### 事件
+
 - [x] 好友消息
 - [x] 群消息
 - [x] 临时会话消息
 - [x] 登录号加群
 - [x] 登录号退群(包含T出)
 - [x] 新成员进群/退群
-- [x] 群/好友消息撤回 
+- [x] 群/好友消息撤回
 - [x] 群禁言
 - [x] 群成员权限变更
 - [x] 收到邀请进群通知
@@ -45,9 +51,10 @@ qq-android协议的golang实现 移植于mirai
 - [x] 新好友
 - [x] 新好友请求
 - [x] 客户端离线
-- [x] 群提示 (戳一戳/运气王等) 
+- [x] 群提示 (戳一戳/运气王等)
 
 #### 主动操作
+
 > 为防止滥用，将不支持主动邀请新成员进群
 
 - [x] 发送群消息
@@ -73,10 +80,11 @@ qq-android协议的golang实现 移植于mirai
 - [x] 获取陌生人信息
 
 #### 敏感操作
+
 > 由于[QQ钱包支付用户服务协议](https://www.tenpay.com/v2/html5/basic/public/agreement/protocol_mqq_pay.shtml), 将不支持一切有关QQ钱包的协议
 
->4.13 您不得利用本服务实施下列任一的行为：
->\
->     （9） **侵害QQ钱包支付服务系統；**
+> 4.13 您不得利用本服务实施下列任一的行为：
+> \
+> （9） **侵害QQ钱包支付服务系統；**
 
 - [ ] ~~QQ钱包协议(收款/付款等)~~

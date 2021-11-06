@@ -2,7 +2,7 @@ name: Goimports Style Fix
 
 on:
   push:
-    branches: [ master ]
+    branches: [ LBot ]
 
 jobs:
 
