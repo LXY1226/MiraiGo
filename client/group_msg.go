@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"math"
 	"math/rand"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"github.com/Mrs4s/MiraiGo/client/pb/multimsg"
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
 	"github.com/Mrs4s/MiraiGo/message"
+	"github.com/Mrs4s/MiraiGo/protocol/packets"
 	"github.com/Mrs4s/MiraiGo/utils"
 
 	"github.com/pkg/errors"

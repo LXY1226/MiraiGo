@@ -3,7 +3,6 @@ package client
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"math/rand"
 	"net/url"
 	"sort"
@@ -17,6 +16,7 @@ import (
 	"github.com/Mrs4s/MiraiGo/binary/jce"
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
 	"github.com/Mrs4s/MiraiGo/client/pb/profilecard"
+	"github.com/Mrs4s/MiraiGo/protocol/packets"
 	"github.com/Mrs4s/MiraiGo/utils"
 )
 
