@@ -328,6 +328,102 @@ func (c *QQClient) TokenLogin(token []byte) error {
 	return c.init(true)
 }
 
+func (c *QQClient) ReLogin() error {
+	if c.Online {
+		return ErrAlreadyOnline
+	}
+	err := c.connect()
+	if err != nil {
+		return err
+	}
+	_, err = c.sendAndWait(c.buildRequestChangeSigPacket())
+	if err != nil {
+		return err
+	}
+	return c.init(true)
+}
+
+func (c *QQClient) LoadState(token []byte) {
+	r := binary.NewReader(token)
+	c.Uin = r.ReadInt64()
+	c.sigInfo.d2 = r.ReadBytesShort()
+	c.sigInfo.d2Key = r.ReadBytesShort()
+	c.sigInfo.tgt = r.ReadBytesShort()
+	c.sigInfo.srmToken = r.ReadBytesShort()
+	c.sigInfo.t133 = r.ReadBytesShort()
+	c.sigInfo.encryptedA1 = r.ReadBytesShort()
+	c.sigInfo.wtSessionTicketKey = r.ReadBytesShort()
+	c.OutGoingPacketSessionId = r.ReadBytesShort()
+	// SystemDeviceInfo.TgtgtKey = r.ReadBytesShort()
+	c.deviceInfo.TgtgtKey = r.ReadBytesShort()
+
+	c.deviceInfo.Display = r.ReadBytesShort()
+	c.deviceInfo.Product = r.ReadBytesShort()
+	c.deviceInfo.Device = r.ReadBytesShort()
+	c.deviceInfo.Board = r.ReadBytesShort()
+	c.deviceInfo.Brand = r.ReadBytesShort()
+	c.deviceInfo.Model = r.ReadBytesShort()
+	c.deviceInfo.Bootloader = r.ReadBytesShort()
+	c.deviceInfo.FingerPrint = r.ReadBytesShort()
+	c.deviceInfo.BootId = r.ReadBytesShort()
+	c.deviceInfo.ProcVersion = r.ReadBytesShort()
+	c.deviceInfo.BaseBand = r.ReadBytesShort()
+	c.deviceInfo.SimInfo = r.ReadBytesShort()
+	c.deviceInfo.OSType = r.ReadBytesShort()
+	c.deviceInfo.MacAddress = r.ReadBytesShort()
+	c.deviceInfo.IpAddress = r.ReadBytesShort()
+	c.deviceInfo.WifiBSSID = r.ReadBytesShort()
+	c.deviceInfo.WifiSSID = r.ReadBytesShort()
+	c.deviceInfo.IMSIMd5 = r.ReadBytesShort()
+	c.deviceInfo.IMEI = r.ReadStringShort()
+	c.deviceInfo.APN = r.ReadBytesShort()
+	c.deviceInfo.VendorName = r.ReadBytesShort()
+	c.deviceInfo.VendorOSName = r.ReadBytesShort()
+	c.deviceInfo.AndroidId = r.ReadBytesShort()
+
+	SystemDeviceInfo.GenNewGuid()
+	SystemDeviceInfo.GenNewTgtgtKey()
+}
+
+func (c *QQClient) SaveState() []byte {
+	return binary.NewWriterF(func(w *binary.Writer) {
+		w.WriteUInt64(uint64(c.Uin))
+		w.WriteBytesShort(c.sigInfo.d2)
+		w.WriteBytesShort(c.sigInfo.d2Key)
+		w.WriteBytesShort(c.sigInfo.tgt)
+		w.WriteBytesShort(c.sigInfo.srmToken)
+		w.WriteBytesShort(c.sigInfo.t133)
+		w.WriteBytesShort(c.sigInfo.encryptedA1)
+		w.WriteBytesShort(c.sigInfo.wtSessionTicketKey)
+		w.WriteBytesShort(c.OutGoingPacketSessionId)
+		w.WriteBytesShort(c.deviceInfo.TgtgtKey)
+
+		w.WriteBytesShort(c.deviceInfo.Display)
+		w.WriteBytesShort(c.deviceInfo.Product)
+		w.WriteBytesShort(c.deviceInfo.Device)
+		w.WriteBytesShort(c.deviceInfo.Board)
+		w.WriteBytesShort(c.deviceInfo.Brand)
+		w.WriteBytesShort(c.deviceInfo.Model)
+		w.WriteBytesShort(c.deviceInfo.Bootloader)
+		w.WriteBytesShort(c.deviceInfo.FingerPrint)
+		w.WriteBytesShort(c.deviceInfo.BootId)
+		w.WriteBytesShort(c.deviceInfo.ProcVersion)
+		w.WriteBytesShort(c.deviceInfo.BaseBand)
+		w.WriteBytesShort(c.deviceInfo.SimInfo)
+		w.WriteBytesShort(c.deviceInfo.OSType)
+		w.WriteBytesShort(c.deviceInfo.MacAddress)
+		w.WriteBytesShort(c.deviceInfo.IpAddress)
+		w.WriteBytesShort(c.deviceInfo.WifiBSSID)
+		w.WriteBytesShort(c.deviceInfo.WifiSSID)
+		w.WriteBytesShort(c.deviceInfo.IMSIMd5)
+		w.WriteStringShort(c.deviceInfo.IMEI)
+		w.WriteBytesShort(c.deviceInfo.APN)
+		w.WriteBytesShort(c.deviceInfo.VendorName)
+		w.WriteBytesShort(c.deviceInfo.VendorOSName)
+		w.WriteBytesShort(c.deviceInfo.AndroidId)
+	})
+}
+
 func (c *QQClient) FetchQRCode() (*QRCodeLoginResponse, error) {
 	if c.Online {
 		return nil, ErrAlreadyOnline
