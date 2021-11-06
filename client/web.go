@@ -4,9 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
-
 	"github.com/Mrs4s/MiraiGo/internal/packets"
+	"strings"
 
 	"github.com/Mrs4s/MiraiGo/client/pb/web"
 	"github.com/Mrs4s/MiraiGo/utils"

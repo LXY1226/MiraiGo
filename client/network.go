@@ -1,14 +1,13 @@
 package client
 
 import (
+	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"net"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 
 	"github.com/pkg/errors"
 

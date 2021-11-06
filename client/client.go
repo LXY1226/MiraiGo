@@ -3,6 +3,8 @@ package client
 import (
 	"crypto/md5"
 	"fmt"
+	"github.com/Mrs4s/MiraiGo/internal/crypto"
+	packets2 "github.com/Mrs4s/MiraiGo/internal/packets"
 	"math"
 	"math/rand"
 	"net"
@@ -10,9 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/Mrs4s/MiraiGo/internal/crypto"
-	packets2 "github.com/Mrs4s/MiraiGo/internal/packets"
 
 	"github.com/pkg/errors"
 

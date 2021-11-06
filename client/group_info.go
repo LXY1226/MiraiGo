@@ -3,13 +3,12 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"math/rand"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
