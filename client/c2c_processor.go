@@ -118,10 +118,10 @@ func privateMessageDecoder(c *QQClient, pMsg *msg.Message, _ *incomingPacketInfo
 			return
 		}
 		if pMsg.Head.GetFromUin() == c.Uin {
-			c.dispatchPrivateMessageSelf(c.parsePrivateMessage(pMsg))
+			c.EventHandler.SelfPrivateMessageHandler(c, c.parsePrivateMessage(pMsg))
 			return
 		}
-		c.dispatchPrivateMessage(c.parsePrivateMessage(pMsg))
+		c.EventHandler.PrivateMessageHandler(c, c.parsePrivateMessage(pMsg))
 	default:
 		c.Debug("unknown c2c cmd on private msg decoder: %v", pMsg.Head.GetC2CCmd())
 	}
@@ -135,7 +135,7 @@ func privatePttDecoder(c *QQClient, pMsg *msg.Message, _ *incomingPacketInfo) {
 		// m := binary.NewReader(pMsg.Body.RichText.Ptt.Reserve[1:]).ReadTlvMap(1)
 		// T3 -> timestamp T8 -> voiceType T9 -> voiceLength T10 -> PbReserveStruct
 	}
-	c.dispatchPrivateMessage(c.parsePrivateMessage(pMsg))
+	c.EventHandler.PrivateMessageHandler(c, c.parsePrivateMessage(pMsg))
 }
 
 func tempSessionDecoder(c *QQClient, pMsg *msg.Message, _ *incomingPacketInfo) {
@@ -192,7 +192,7 @@ func tempSessionDecoder(c *QQClient, pMsg *msg.Message, _ *incomingPacketInfo) {
 		if pMsg.Head.GetFromUin() == c.Uin {
 			return
 		}
-		c.dispatchTempMessage(&TempMessageEvent{
+		c.EventHandler.TempMessageHandler(c, &TempMessageEvent{
 			Message: c.parseTempMessage(pMsg),
 			Session: session,
 		})
@@ -205,7 +205,7 @@ func troopAddMemberBroadcastDecoder(c *QQClient, pMsg *msg.Message, _ *incomingP
 	group := c.FindGroupByUin(pMsg.Head.GetFromUin())
 	if pMsg.Head.GetAuthUin() == c.Uin {
 		if group == nil && c.ReloadGroupList() == nil {
-			c.dispatchJoinGroupEvent(c.FindGroupByUin(pMsg.Head.GetFromUin()))
+			c.EventHandler.JoinGroupHandler(c, c.FindGroupByUin(pMsg.Head.GetFromUin()))
 		}
 	} else {
 		if group != nil && group.FindMember(pMsg.Head.GetAuthUin()) == nil {
@@ -218,7 +218,7 @@ func troopAddMemberBroadcastDecoder(c *QQClient, pMsg *msg.Message, _ *incomingP
 				info.Members = append(info.Members, mem)
 				info.sort()
 			})
-			c.dispatchNewMemberEvent(&MemberJoinGroupEvent{
+			c.EventHandler.MemberJoinedHandler(c, &MemberJoinGroupEvent{
 				Group:  group,
 				Member: mem,
 			})
@@ -261,7 +261,7 @@ func msgType0x211Decoder(c *QQClient, pMsg *msg.Message, info *incomingPacketInf
 		if err != nil {
 			return
 		}
-		c.dispatchOfflineFileEvent(&OfflineFileEvent{
+		c.EventHandler.OfflineFileHandler(c, &OfflineFileEvent{
 			FileName:    string(sub4.NotOnlineFile.FileName),
 			FileSize:    sub4.NotOnlineFile.GetFileSize(),
 			Sender:      pMsg.Head.GetFromUin(),

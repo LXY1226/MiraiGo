@@ -107,7 +107,10 @@ type QQClient struct {
 	heartbeatEnabled       bool
 	groupDataTransSeq      int32
 	highwayApplyUpSeq      int32
-	eventHandlers          *eventHandlers
+
+	// handlers
+	groupMessageReceiptHandler sync.Map
+	EventHandler
 
 	groupListLock sync.Mutex
 }
@@ -203,7 +206,7 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		groupSeq:                int32(rand.Intn(20000)),
 		friendSeq:               22911,
 		highwayApplyUpSeq:       77918,
-		eventHandlers:           &eventHandlers{},
+		EventHandler:            nopHandlers,
 		msgSvcCache:             utils.NewCache(time.Second * 15),
 		transCache:              utils.NewCache(time.Second * 15),
 		onlinePushCache:         utils.NewCache(time.Second * 15),

@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Mrs4s/MiraiGo/internal/packets"
-	"github.com/Mrs4s/MiraiGo/message"
 	"github.com/Mrs4s/MiraiGo/utils"
 )
 
@@ -103,21 +102,6 @@ func (c *QQClient) connect() error {
 		return err
 	}
 	c.once.Do(func() {
-		c.OnGroupMessage(func(_ *QQClient, _ *message.GroupMessage) {
-			atomic.AddUint64(&c.stat.MessageReceived, 1)
-			atomic.StoreInt64(&c.stat.LastMessageTime, time.Now().Unix())
-		})
-		c.OnPrivateMessage(func(_ *QQClient, _ *message.PrivateMessage) {
-			atomic.AddUint64(&c.stat.MessageReceived, 1)
-			atomic.StoreInt64(&c.stat.LastMessageTime, time.Now().Unix())
-		})
-		c.OnTempMessage(func(_ *QQClient, _ *TempMessageEvent) {
-			atomic.AddUint64(&c.stat.MessageReceived, 1)
-			atomic.StoreInt64(&c.stat.LastMessageTime, time.Now().Unix())
-		})
-		c.onGroupMessageReceipt("internal", func(_ *QQClient, _ *groupMessageReceiptEvent) {
-			atomic.AddUint64(&c.stat.MessageSent, 1)
-		})
 		go c.netLoop()
 	})
 	c.retryTimes = 0
@@ -131,13 +115,13 @@ func (c *QQClient) quickReconnect() {
 	time.Sleep(time.Millisecond * 200)
 	if err := c.connect(); err != nil {
 		c.Error("connect server error: %v", err)
-		c.dispatchDisconnectEvent(&ClientDisconnectedEvent{Message: "quick reconnect failed"})
+		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "quick reconnect failed"})
 		return
 	}
 	if err := c.registerClient(); err != nil {
 		c.Error("register client failed: %v", err)
 		c.Disconnect()
-		c.dispatchDisconnectEvent(&ClientDisconnectedEvent{Message: "register error"})
+		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "register error"})
 		return
 	}
 }
@@ -245,13 +229,13 @@ func (c *QQClient) unexpectedDisconnect(_ *utils.TCPListener, e error) {
 	c.Online = false
 	if err := c.connect(); err != nil {
 		c.Error("connect server error: %v", err)
-		c.dispatchDisconnectEvent(&ClientDisconnectedEvent{Message: "connection dropped by server."})
+		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "connection dropped by server."})
 		return
 	}
 	if err := c.registerClient(); err != nil {
 		c.Error("register client failed: %v", err)
 		c.Disconnect()
-		c.dispatchDisconnectEvent(&ClientDisconnectedEvent{Message: "register error"})
+		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "register error"})
 		return
 	}
 }
@@ -279,7 +263,7 @@ func (c *QQClient) netLoop() {
 			c.Error("parse incoming packet error: %v", err)
 			if errors.Is(err, packets.ErrSessionExpired) || errors.Is(err, packets.ErrPacketDropped) {
 				c.Disconnect()
-				go c.dispatchDisconnectEvent(&ClientDisconnectedEvent{Message: "session expired"})
+				go c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "session expired"})
 				continue
 			}
 			errCount++
