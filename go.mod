@@ -1,4 +1,4 @@
-module github.com/LXY1226/MiraiGo
+module github.com/Mrs4s/MiraiGo
 
 go 1.17
 
