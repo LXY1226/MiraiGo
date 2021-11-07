@@ -1,6 +1,7 @@
 package client
 
 import (
+	"log"
 	"net"
 	"runtime/debug"
 	"strings"
@@ -85,6 +86,27 @@ func (c *QQClient) ConnectionQualityTest() *ConnectionQualityInfo {
 	return r
 }
 
+// connectFastest 连接到最快的服务器，且应是初次连接
+func (c *QQClient) connectFastest() error {
+	c.Debug("connectFastest")
+	err := c.TCP.ConnectFastestAndSort(c.servers)
+	if c.currServerIndex != 0 {
+		log.Println("c.currServerIndex != 0 in first connect")
+		c.currServerIndex = 0
+	}
+	if err != nil {
+		return err
+	}
+	c.Info("connected to server: %v [fastest]", c.servers[c.currServerIndex].String())
+	if !c.netAlive {
+		c.alive = true
+		go c.netLoop()
+	}
+	c.retryTimes = 0
+	c.ConnectTime = time.Now()
+	return nil
+}
+
 // connect 连接到 QQClient.servers 中的服务器
 func (c *QQClient) connect() error {
 	c.Info("connect to server: %v", c.servers[c.currServerIndex].String())
@@ -101,9 +123,10 @@ func (c *QQClient) connect() error {
 		c.Error("connect server error: %v", err)
 		return err
 	}
-	c.once.Do(func() {
+	if !c.netAlive {
+		c.alive = true
 		go c.netLoop()
-	})
+	}
 	c.retryTimes = 0
 	c.ConnectTime = time.Now()
 	return nil
@@ -130,6 +153,7 @@ func (c *QQClient) quickReconnect() {
 func (c *QQClient) Disconnect() {
 	c.Online = false
 	c.TCP.Close()
+	c.alive = false
 }
 
 // sendAndWait 向服务器发送一个数据包, 并等待返回
@@ -216,14 +240,14 @@ func (c *QQClient) sendAndWaitDynamic(seq uint16, pkt []byte) ([]byte, error) {
 }
 
 // plannedDisconnect 计划中断线事件
-func (c *QQClient) plannedDisconnect(_ *utils.TCPListener) {
+func (c *QQClient) plannedDisconnect(_ *utils.TCPDialer) {
 	c.Debug("planned disconnect.")
 	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
 	c.Online = false
 }
 
 // unexpectedDisconnect 非预期断线事件
-func (c *QQClient) unexpectedDisconnect(_ *utils.TCPListener, e error) {
+func (c *QQClient) unexpectedDisconnect(_ *utils.TCPDialer, e error) {
 	c.Error("unexpected disconnect: %v", e)
 	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
 	c.Online = false
@@ -242,6 +266,7 @@ func (c *QQClient) unexpectedDisconnect(_ *utils.TCPListener, e error) {
 
 // netLoop 通过循环来不停接收数据包
 func (c *QQClient) netLoop() {
+	c.netAlive = true
 	errCount := 0
 	for c.alive {
 		l, err := c.TCP.ReadInt32()
@@ -322,4 +347,5 @@ func (c *QQClient) netLoop() {
 			}
 		}(pkt)
 	}
+	c.netAlive = false
 }

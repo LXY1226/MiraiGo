@@ -3,8 +3,11 @@ package utils
 import (
 	"encoding/binary"
 	"io"
+	"log"
 	"net"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/pkg/errors"
 )
@@ -31,6 +34,36 @@ func (t *TCPDialer) UnexpectedDisconnect(f func(*TCPDialer, error)) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.unexpectedDisconnect = f
+}
+
+func (t *TCPDialer) ConnectFastestAndSort(addrs []*net.TCPAddr) error {
+	ch := make(chan error)
+	wg := sync.WaitGroup{}
+	wg.Add(len(addrs))
+	for _, remote := range addrs {
+		go func(remote *net.TCPAddr) {
+			defer wg.Done()
+			conn, err := net.DialTCP("tcp", nil, remote)
+			if err != nil {
+				return
+			}
+			addrs = append(addrs, remote)
+			if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&t.conn))) != nil {
+				conn.Close()
+				return
+			}
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&t.conn)), unsafe.Pointer(conn))
+			log.Println("已连接至", remote.IP)
+			ch <- nil
+		}(remote)
+	}
+	go func() {
+		wg.Wait()
+		if t.conn == nil {
+			ch <- errors.New("All servers are unreachable")
+		}
+	}()
+	return <-ch
 }
 
 func (t *TCPDialer) Connect(addr *net.TCPAddr) error {

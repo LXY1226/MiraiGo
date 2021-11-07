@@ -214,7 +214,6 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		transCache:              utils.NewCache(time.Second * 15),
 		onlinePushCache:         utils.NewCache(time.Second * 15),
 		servers:                 []*net.TCPAddr{},
-		alive:                   true,
 		ecdh:                    crypto.NewEcdh(),
 	}
 	cli.GuildService = &GuildService{c: cli}
@@ -290,7 +289,7 @@ func (c *QQClient) Login() (*LoginResponse, error) {
 	if c.Online {
 		return nil, ErrAlreadyOnline
 	}
-	err := c.connect()
+	err := c.connectFastest()
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +309,7 @@ func (c *QQClient) TokenLogin(token []byte) error {
 	if c.Online {
 		return ErrAlreadyOnline
 	}
-	err := c.connect()
+	err := c.connectFastest()
 	if err != nil {
 		return err
 	}
@@ -339,7 +338,7 @@ func (c *QQClient) ReLogin() error {
 	if c.Online {
 		return ErrAlreadyOnline
 	}
-	err := c.connect()
+	err := c.connectFastest()
 	if err != nil {
 		return err
 	}
@@ -435,7 +434,7 @@ func (c *QQClient) FetchQRCode() (*QRCodeLoginResponse, error) {
 	if c.Online {
 		return nil, ErrAlreadyOnline
 	}
-	err := c.connect()
+	err := c.connectFastest()
 	if err != nil {
 		return nil, err
 	}
@@ -981,7 +980,9 @@ func (c *QQClient) doHeartbeat() {
 	ticker := time.NewTicker(time.Second * 30)
 	for range ticker.C {
 		if !c.Online {
-			break
+			ticker.Stop()
+			c.heartbeatEnabled = false
+			return
 		}
 		seq := c.nextSeq()
 		sso := packets.BuildSsoPacket(seq, c.version.AppId, c.version.SubAppId, "Heartbeat.Alive", c.deviceInfo.IMEI, []byte{}, c.OutGoingPacketSessionId, []byte{}, c.ksid)
@@ -996,8 +997,6 @@ func (c *QQClient) doHeartbeat() {
 			times = 0
 		}
 	}
-	ticker.Stop()
-	c.heartbeatEnabled = false
 }
 
 func (c *QQClient) Error(msg string, args ...interface{}) {
