@@ -1,0 +1,79 @@
+// 存放所有未知的结构体, 均为手动分析复原
+syntax = "proto2";
+
+package channel;
+
+option go_package = "./;channel";
+
+message ChannelOidb0xf5bRsp {
+  optional uint64 guildId = 1;
+  repeated GuildMemberInfo bots = 4;
+  repeated GuildMemberInfo members = 5;
+  optional GuildAdminInfo adminInfo = 25;
+}
+
+message ChannelOidb0xf88Rsp {
+  optional GuildUserProfile profile = 1;
+}
+
+message ChannelOidb0xfc9Rsp {
+  optional GuildUserProfile profile = 1;
+}
+
+message ChannelOidb0xf57Rsp {
+  optional GuildMetaRsp rsp = 1;
+}
+
+message GuildMetaRsp {
+  optional uint64 guildId = 3;
+  optional GuildMeta meta = 4;
+}
+
+message GuildAdminInfo {
+  repeated GuildMemberInfo admins = 2;
+}
+
+message GuildMemberInfo {
+  optional string title = 2;
+  optional string nickname = 3;
+  optional int64 lastSpeakTime = 4; // uncertainty
+  optional int32 role = 5; // uncertainty
+  optional uint64 tinyId = 8;
+}
+
+// 频道系统用户资料
+message GuildUserProfile {
+  optional uint64 tinyId = 2;
+  optional string nickname = 3;
+  optional string avatarUrl = 6;
+  // 15: avatar url info
+  optional int64 joinTime = 16;  // uncertainty
+  // 22 cards
+  // 23 display cards
+  // 25 current cards *uncertainty
+}
+
+message GuildMeta {
+  optional uint64 guildCode = 2;
+  optional int64 createTime = 4;
+  optional int64 maxMemberCount = 5;
+  optional int64 memberCount = 6;
+  optional string name = 8;
+  optional int32 robotMaxNum = 11;
+  optional int32 adminMaxNum = 12;
+  optional string profile = 13;
+  optional int64 avatarSeq = 14;
+  optional uint64 ownerId = 18;
+  optional int64 coverSeq = 19;
+  optional int32 clientId = 20;
+}
+
+/*
+// 个性档案卡片
+message GuildMemberProfileCard {
+  optional int32 appid = 1;
+  optional string name = 2;
+
+}
+ */
+

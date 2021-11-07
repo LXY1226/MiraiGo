@@ -43,7 +43,7 @@ type QQClient struct {
 	OnlineClients []*OtherClientInfo
 	Online        bool
 	QiDian        *QiDianAccountInfo
-	ChannelSelf   *ChannelSelfInfo
+	GuildService  *GuildService
 
 	// protocol public field
 	SequenceId              int32
@@ -202,7 +202,6 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		RandomKey:               make([]byte, 16),
 		OutGoingPacketSessionId: []byte{0x02, 0xB0, 0x5B, 0x8B},
 		TCP:                     &utils.TCPListener{},
-		ChannelSelf:             &ChannelSelfInfo{},
 		sigInfo:                 &loginSigInfo{},
 		requestPacketRequestID:  1921334513,
 		groupSeq:                int32(rand.Intn(20000)),
@@ -216,6 +215,7 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		alive:                   true,
 		ecdh:                    crypto.NewEcdh(),
 	}
+	cli.GuildService = &GuildService{c: cli}
 	cli.ecdh.FetchPubKey(uin)
 	cli.UseDevice(SystemDeviceInfo)
 	sso, err := getSSOAddress()
