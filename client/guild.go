@@ -5,6 +5,7 @@ import (
 
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client/pb/channel"
+	"github.com/Mrs4s/MiraiGo/client/pb/msg"
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/Mrs4s/MiraiGo/utils"
@@ -80,28 +81,36 @@ type (
 )
 
 func init() {
-	decoders["trpc.group_pro.synclogic.SyncLogic.PushFirstView"] = decodeChannelPushFirstView
-	decoders["MsgPush.PushGroupProMsg"] = decodeChannelMessagePushPacket
+	decoders["trpc.group_pro.synclogic.SyncLogic.PushFirstView"] = decodeGuildPushFirstView
+	decoders["MsgPush.PushGroupProMsg"] = decodeGuildMessagePushPacket
 }
 
-func (c *QQClient) syncChannelFirstView() {
-	rsp, err := c.sendAndWaitDynamic(c.buildSyncChannelFirstViewPacket())
-	if err != nil {
-		c.Error("sync channel error: %v", err)
-		return
+func (s *GuildService) FindGuild(guildId uint64) *GuildInfo {
+	for _, i := range s.Guilds {
+		if i.GuildId == guildId {
+			return i
+		}
 	}
-	firstViewRsp := new(channel.FirstViewRsp)
-	if err = proto.Unmarshal(rsp, firstViewRsp); err != nil {
-		return
+	return nil
+}
+
+func (g *GuildInfo) FindMember(tinyId uint64) *GuildMemberInfo {
+	for i := 0; i < len(g.Members); i++ {
+		if g.Members[i].TinyId == tinyId {
+			return g.Members[i]
+		}
 	}
-	c.GuildService.TinyId = firstViewRsp.GetSelfTinyid()
-	c.GuildService.GuildCount = firstViewRsp.GetGuildCount()
-	if self, err := c.GuildService.GetUserProfile(c.GuildService.TinyId); err == nil {
-		c.GuildService.Nickname = self.Nickname
-		c.GuildService.AvatarUrl = self.AvatarUrl
-	} else {
-		c.Error("get self guild profile error: %v", err)
+	for i := 0; i < len(g.Admins); i++ {
+		if g.Admins[i].TinyId == tinyId {
+			return g.Admins[i]
+		}
 	}
+	for i := 0; i < len(g.Bots); i++ {
+		if g.Bots[i].TinyId == tinyId {
+			return g.Bots[i]
+		}
+	}
+	return nil
 }
 
 func (s *GuildService) GetUserProfile(tinyId uint64) (*GuildUserProfile, error) {
@@ -150,7 +159,7 @@ func (s *GuildService) GetGuildMembers(guildId uint64) (bots []*GuildMemberInfo,
 			1: u1, 2: u1, 3: u1, 4: u1, 5: u1, 6: u1, 7: u1, 8: u1, 20: u1,
 		},
 		6:  uint32(0),
-		8:  uint32(500), // max response?
+		8:  uint32(500), // count
 		14: uint32(2),
 	})
 	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf5b_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, payload)
@@ -289,6 +298,26 @@ func (s *GuildService) fetchChannelListState(guildId uint64, channels []*Channel
 }
 */
 
+func (c *QQClient) syncChannelFirstView() {
+	rsp, err := c.sendAndWaitDynamic(c.buildSyncChannelFirstViewPacket())
+	if err != nil {
+		c.Error("sync channel error: %v", err)
+		return
+	}
+	firstViewRsp := new(channel.FirstViewRsp)
+	if err = proto.Unmarshal(rsp, firstViewRsp); err != nil {
+		return
+	}
+	c.GuildService.TinyId = firstViewRsp.GetSelfTinyid()
+	c.GuildService.GuildCount = firstViewRsp.GetGuildCount()
+	if self, err := c.GuildService.GetUserProfile(c.GuildService.TinyId); err == nil {
+		c.GuildService.Nickname = self.Nickname
+		c.GuildService.AvatarUrl = self.AvatarUrl
+	} else {
+		c.Error("get self guild profile error: %v", err)
+	}
+}
+
 func (c *QQClient) buildSyncChannelFirstViewPacket() (uint16, []byte) {
 	seq := c.nextSeq()
 	req := &channel.FirstViewReq{
@@ -301,11 +330,65 @@ func (c *QQClient) buildSyncChannelFirstViewPacket() (uint16, []byte) {
 	return seq, packet
 }
 
-func decodeChannelMessagePushPacket(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeGuildMessagePushPacket(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+	push := new(channel.MsgOnlinePush)
+	if err := proto.Unmarshal(payload, push); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+	}
+	for _, m := range push.Msgs {
+		if m.Head.ContentHead.GetType() == 3841 {
+			// todo: 回头 event flow 的处理移出去重构下逻辑, 先暂时这样方便改
+			var common *msg.CommonElem
+			if m.Body != nil {
+				for _, e := range m.Body.RichText.Elems {
+					if e.CommonElem != nil {
+						common = e.CommonElem
+						break
+					}
+				}
+			}
+			if m.Head.ContentHead.GetSubType() == 2 { // todo: tips?
+				continue
+			}
+			if common == nil || common.GetServiceType() != 500 {
+				continue
+			}
+			eventBody := new(channel.EventBody)
+			if err := proto.Unmarshal(common.PbElem, eventBody); err != nil {
+				c.Error("failed to unmarshal guild channel event body: %v", err)
+				continue
+			}
+			if eventBody.UpdateMsg != nil {
+				if eventBody.UpdateMsg.GetEventType() == 1 || eventBody.UpdateMsg.GetEventType() == 2 { // todo: 撤回消息
+					continue
+				}
+				if eventBody.UpdateMsg.GetEventType() == 4 { // 消息贴表情更新 (包含添加或删除)
+					t, err := c.GuildService.pullRoamMsgByEventFlow(m.Head.RoutingHead.GetGuildId(), m.Head.RoutingHead.GetChannelId(), eventBody.UpdateMsg.GetMsgSeq(), eventBody.UpdateMsg.GetMsgSeq(), eventBody.UpdateMsg.GetEventVersion()-1)
+					if err != nil || len(t) == 0 {
+						c.Error("process guild event flow error: pull eventMsg message error: %v", err)
+						continue
+					}
+					// 自己的消息被贴表情会单独推送一个tips, 这里不需要解析
+					if t[0].Head.RoutingHead.GetFromTinyid() == c.GuildService.TinyId {
+						continue
+					}
+					// todo: 如果是别人消息被贴表情, 会在在后续继续推送一个 empty tips, 可以从那个消息获取到 OperatorId
+					c.dispatchGuildMessageReactionsUpdatedEvent(&GuildMessageReactionsUpdatedEvent{
+						MessageId:        t[0].Head.ContentHead.GetSeq(),
+						CurrentReactions: decodeGuildMessageEmojiReactions(t[0]),
+					})
+				}
+			}
+			continue
+		}
+		if cm := c.parseGuildChannelMessage(m); cm != nil {
+			c.dispatchGuildChannelMessage(cm)
+		}
+	}
 	return nil, nil
 }
 
-func decodeChannelPushFirstView(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeGuildPushFirstView(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
 	firstViewMsg := new(channel.FirstViewMsg)
 	if err := proto.Unmarshal(payload, firstViewMsg); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
@@ -335,7 +418,6 @@ func decodeChannelPushFirstView(c *QQClient, _ *incomingPacketInfo, payload []by
 			}
 			info.Bots, info.Members, info.Admins, _ = c.GuildService.GetGuildMembers(info.GuildId)
 			c.GuildService.Guilds = append(c.GuildService.Guilds, info)
-			c.GuildService.FetchGuestGuild(info.GuildId)
 		}
 	}
 	if len(firstViewMsg.ChannelMsgs) > 0 { // sync msg
