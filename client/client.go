@@ -994,3 +994,38 @@ func (c *QQClient) doHeartbeat() {
 	ticker.Stop()
 	c.heartbeatEnabled = false
 }
+
+func (c *QQClient) Error(msg string, args ...interface{}) {
+	/*	c.LogEventHandler(&LogEvent{
+		Type:    "ERROR",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Warning(msg string, args ...interface{}) {
+	/*	c.LogEventHandler(&LogEvent{
+		Type:    "WARNING",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Info(msg string, args ...interface{}) {
+	/*	c.dispatchLogEvent(&LogEvent{
+		Type:    "INFO",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Debug(msg string, args ...interface{}) {
+	/*	c.dispatchLogEvent(&LogEvent{
+		Type:    "DEBUG",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Trace(msg string, args ...interface{}) {
+	/*	c.dispatchLogEvent(&LogEvent{
+		Type:    "TRACE",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}

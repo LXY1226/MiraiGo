@@ -1,8 +1,6 @@
 package client
 
 import (
-	"fmt"
-	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/Mrs4s/MiraiGo/message"
@@ -70,6 +68,60 @@ var nopHandlers = EventHandler{
 	GroupDigestHandler:              func(*QQClient, *GroupDigestEvent) {},
 }
 
+/* TODO Draft Logger
+
+type LogHandler interface {
+	Error(msg string, args ...interface{})
+	Warning(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
+	Debug(msg string, args ...interface{})
+	Trace(msg string, args ...interface{})
+}
+
+
+
+
+type logger struct {
+	LogEventHandler func(*QQClient, *LogEvent)
+}
+
+
+func (c logger) Error(msg string, args ...interface{}) {
+	c.LogEventHandler(&LogEvent{
+		Type:    "ERROR",
+		Message: fmt.Sprintf(msg, args...),
+	})
+}
+
+func (c logger) Warning(msg string, args ...interface{}) {
+	c.LogEventHandler(&LogEvent{
+		Type:    "WARNING",
+		Message: fmt.Sprintf(msg, args...),
+	})
+}
+
+func (c logger) Info(msg string, args ...interface{}) {
+	c.dispatchLogEvent(&LogEvent{
+		Type:    "INFO",
+		Message: fmt.Sprintf(msg, args...),
+	})
+}
+
+func (c logger) Debug(msg string, args ...interface{}) {
+	c.dispatchLogEvent(&LogEvent{
+		Type:    "DEBUG",
+		Message: fmt.Sprintf(msg, args...),
+	})
+}
+
+func (c logger) Trace(msg string, args ...interface{}) {
+	c.dispatchLogEvent(&LogEvent{
+		Type:    "TRACE",
+		Message: fmt.Sprintf(msg, args...),
+	})
+}
+
+
 func (c *QQClient) dispatchLogEvent(e *LogEvent) {
 	if e == nil {
 		return
@@ -80,6 +132,7 @@ func (c *QQClient) dispatchLogEvent(e *LogEvent) {
 		})
 	}
 }
+*/
 
 func (c *QQClient) onGroupMessageReceipt(id string, f ...func(*QQClient, *groupMessageReceiptEvent)) {
 	if len(f) == 0 {
@@ -95,13 +148,4 @@ func (c *QQClient) dispatchGroupMessageReceiptEvent(e *groupMessageReceiptEvent)
 		go f.(func(*QQClient, *groupMessageReceiptEvent))(c, e)
 		return true
 	})
-}
-
-func cover(f func()) {
-	defer func() {
-		if pan := recover(); pan != nil {
-			fmt.Printf("event error: %v\n%s", pan, debug.Stack())
-		}
-	}()
-	f()
 }

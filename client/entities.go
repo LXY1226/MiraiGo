@@ -175,6 +175,7 @@ type (
 	}
 
 	LogEvent struct {
+		Client  *QQClient
 		Type    string
 		Message string
 	}
