@@ -28,8 +28,9 @@ type QQClient struct {
 	Uin         int64
 	PasswordMd5 [16]byte
 
-	stat Statistics
-	once sync.Once
+	stat     Statistics
+	netAlive bool
+	once     sync.Once
 
 	// option
 	AllowSlider bool
@@ -49,7 +50,7 @@ type QQClient struct {
 	SequenceId              int32
 	OutGoingPacketSessionId []byte
 	RandomKey               []byte
-	TCP                     *utils.TCPListener
+	TCP                     *utils.TCPDialer
 	ConnectTime             time.Time
 
 	// internal state
@@ -182,6 +183,7 @@ var decoders = map[string]func(*QQClient, *incomingPacketInfo, []byte) (interfac
 
 func init() {
 	rand.Seed(time.Now().UTC().UnixNano())
+
 }
 
 // NewClient create new qq client
@@ -201,7 +203,7 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		AllowSlider:             true,
 		RandomKey:               make([]byte, 16),
 		OutGoingPacketSessionId: []byte{0x02, 0xB0, 0x5B, 0x8B},
-		TCP:                     &utils.TCPListener{},
+		TCP:                     &utils.TCPDialer{},
 		sigInfo:                 &loginSigInfo{},
 		requestPacketRequestID:  1921334513,
 		groupSeq:                int32(rand.Intn(20000)),
@@ -235,35 +237,35 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 	}
 	if len(cli.servers) == 0 {
 		cli.servers = []*net.TCPAddr{ // default servers
-			{IP: net.IP{42, 81, 172, 81}, Port: 80},
-			{IP: net.IP{114, 221, 148, 59}, Port: 14000},
-			{IP: net.IP{42, 81, 172, 147}, Port: 443},
-			{IP: net.IP{125, 94, 60, 146}, Port: 80},
-			{IP: net.IP{114, 221, 144, 215}, Port: 80},
 			{IP: net.IP{42, 81, 172, 22}, Port: 80},
+			{IP: net.IP{42, 81, 172, 81}, Port: 80},
+			{IP: net.IP{42, 81, 172, 147}, Port: 443},
+			{IP: net.IP{114, 221, 144, 215}, Port: 80},
+			{IP: net.IP{114, 221, 148, 59}, Port: 14000},
+			{IP: net.IP{125, 94, 60, 146}, Port: 80},
 		}
 	}
-	pings := make([]int64, len(cli.servers))
-	wg := sync.WaitGroup{}
-	wg.Add(len(cli.servers))
-	for i := range cli.servers {
-		go func(index int) {
-			defer wg.Done()
-			p, err := qualityTest(cli.servers[index].String())
-			if err != nil {
-				pings[index] = 9999
-				return
-			}
-			pings[index] = p
-		}(i)
-	}
-	wg.Wait()
-	sort.Slice(cli.servers, func(i, j int) bool {
-		return pings[i] < pings[j]
-	})
-	if len(cli.servers) > 3 {
-		cli.servers = cli.servers[0 : len(cli.servers)/2] // 保留ping值中位数以上的server
-	}
+	/*	pings := make([]int64, len(cli.servers))
+		wg := sync.WaitGroup{}
+		wg.Add(len(cli.servers))
+		for i := range cli.servers {
+			go func(index int) {
+				defer wg.Done()
+				p, err := qualityTest(cli.servers[index].String())
+				if err != nil {
+					pings[index] = 9999
+					return
+				}
+				pings[index] = p
+			}(i)
+		}
+		wg.Wait()
+		sort.Slice(cli.servers, func(i, j int) bool {
+			return pings[i] < pings[j]
+		})
+		if len(cli.servers) > 3 {
+			cli.servers = cli.servers[0 : len(cli.servers)/2] // 保留ping值中位数以上的server
+		}*/
 	cli.TCP.PlannedDisconnect(cli.plannedDisconnect)
 	cli.TCP.UnexpectedDisconnect(cli.unexpectedDisconnect)
 	rand.Read(cli.RandomKey)

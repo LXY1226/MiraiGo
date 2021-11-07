@@ -9,31 +9,31 @@ import (
 	"github.com/pkg/errors"
 )
 
-type TCPListener struct {
+type TCPDialer struct {
 	lock                 sync.RWMutex
 	conn                 net.Conn
-	plannedDisconnect    func(*TCPListener)
-	unexpectedDisconnect func(*TCPListener, error)
+	plannedDisconnect    func(*TCPDialer)
+	unexpectedDisconnect func(*TCPDialer, error)
 }
 
 var ErrConnectionClosed = errors.New("connection closed")
 
 // PlannedDisconnect 预料中的断开连接
 // 如调用 Close() Connect()
-func (t *TCPListener) PlannedDisconnect(f func(*TCPListener)) {
+func (t *TCPDialer) PlannedDisconnect(f func(*TCPDialer)) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.plannedDisconnect = f
 }
 
 // UnexpectedDisconnect 未预料的断开连接
-func (t *TCPListener) UnexpectedDisconnect(f func(*TCPListener, error)) {
+func (t *TCPDialer) UnexpectedDisconnect(f func(*TCPDialer, error)) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.unexpectedDisconnect = f
 }
 
-func (t *TCPListener) Connect(addr *net.TCPAddr) error {
+func (t *TCPDialer) Connect(addr *net.TCPAddr) error {
 	t.Close()
 	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
@@ -45,7 +45,7 @@ func (t *TCPListener) Connect(addr *net.TCPAddr) error {
 	return nil
 }
 
-func (t *TCPListener) Write(buf []byte) error {
+func (t *TCPDialer) Write(buf []byte) error {
 	if conn := t.getConn(); conn != nil {
 		_, err := conn.Write(buf)
 		if err != nil {
@@ -58,7 +58,7 @@ func (t *TCPListener) Write(buf []byte) error {
 	return ErrConnectionClosed
 }
 
-func (t *TCPListener) ReadBytes(len int) ([]byte, error) {
+func (t *TCPDialer) ReadBytes(len int) ([]byte, error) {
 	buf := make([]byte, len)
 	if conn := t.getConn(); conn != nil {
 		_, err := io.ReadFull(conn, buf)
@@ -73,7 +73,7 @@ func (t *TCPListener) ReadBytes(len int) ([]byte, error) {
 	return nil, ErrConnectionClosed
 }
 
-func (t *TCPListener) ReadInt32() (int32, error) {
+func (t *TCPDialer) ReadInt32() (int32, error) {
 	b, err := t.ReadBytes(4)
 	if err != nil {
 		return 0, err
@@ -81,17 +81,17 @@ func (t *TCPListener) ReadInt32() (int32, error) {
 	return int32(binary.BigEndian.Uint32(b)), nil
 }
 
-func (t *TCPListener) Close() {
+func (t *TCPDialer) Close() {
 	t.close()
 	t.invokePlannedDisconnect()
 }
 
-func (t *TCPListener) unexpectedClose(err error) {
+func (t *TCPDialer) unexpectedClose(err error) {
 	t.close()
 	t.invokeUnexpectedDisconnect(err)
 }
 
-func (t *TCPListener) close() {
+func (t *TCPDialer) close() {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	if t.conn != nil {
@@ -100,7 +100,7 @@ func (t *TCPListener) close() {
 	}
 }
 
-func (t *TCPListener) invokePlannedDisconnect() {
+func (t *TCPDialer) invokePlannedDisconnect() {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 	if t.plannedDisconnect != nil {
@@ -108,7 +108,7 @@ func (t *TCPListener) invokePlannedDisconnect() {
 	}
 }
 
-func (t *TCPListener) invokeUnexpectedDisconnect(err error) {
+func (t *TCPDialer) invokeUnexpectedDisconnect(err error) {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 	if t.unexpectedDisconnect != nil {
@@ -116,7 +116,7 @@ func (t *TCPListener) invokeUnexpectedDisconnect(err error) {
 	}
 }
 
-func (t *TCPListener) getConn() net.Conn {
+func (t *TCPDialer) getConn() net.Conn {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 	return t.conn
