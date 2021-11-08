@@ -1,13 +1,16 @@
 package client
 
 import (
-	"log"
+	"encoding/binary"
+	"fmt"
+	"io"
 	"net"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/pkg/errors"
 
@@ -32,6 +35,8 @@ type ConnectionQualityInfo struct {
 	// SrvServerPacketLoss Highway服务器ICMP丢包数.
 	SrvServerPacketLoss int
 }
+
+var ErrNotConnected = errors.New("no active connection")
 
 func (c *QQClient) ConnectionQualityTest() *ConnectionQualityInfo {
 	if !c.Online {
@@ -86,22 +91,58 @@ func (c *QQClient) ConnectionQualityTest() *ConnectionQualityInfo {
 	return r
 }
 
-// connectFastest 连接到最快的服务器，且应是初次连接
+func (c *QQClient) getConn() *net.TCPConn {
+	return (*net.TCPConn)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn))))
+}
+
+func (c *QQClient) setConn(conn *net.TCPConn) {
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(conn))
+}
+
+func (c *QQClient) cleanConn() *net.TCPConn {
+	return (*net.TCPConn)(atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(nil)))
+}
+
+// connectFastest 连接到最快的服务器
+// TODO 禁用不可用服务器
 func (c *QQClient) connectFastest() error {
 	c.Debug("connectFastest")
-	err := c.TCP.ConnectFastestAndSort(c.servers)
-	if c.currServerIndex != 0 {
-		log.Println("c.currServerIndex != 0 in first connect")
-		c.currServerIndex = 0
+	// 清理存在的解码句柄
+	c.handlers = HandlerMap{}
+
+	ch := make(chan error)
+	wg := sync.WaitGroup{}
+	wg.Add(len(c.servers))
+	for _, remote := range c.servers {
+		go func(remote *net.TCPAddr) {
+			defer wg.Done()
+			conn, err := net.DialTCP("tcp", nil, remote)
+			if err != nil {
+				return
+			}
+			//addrs = append(addrs, remote)
+			if c.getConn() != nil {
+				_ = conn.Close()
+				return
+			}
+			c.setConn(conn)
+			ch <- nil
+		}(remote)
 	}
+	go func() {
+		wg.Wait()
+		if c.getConn() == nil {
+			ch <- errors.New("All servers are unreachable")
+		}
+	}()
+	err := <-ch
+	//c.currServerIndex = 0
 	if err != nil {
 		return err
 	}
-	c.Info("connected to server: %v [fastest]", c.servers[c.currServerIndex].String())
-	if !c.netAlive {
-		c.alive = true
-		go c.netLoop()
-	}
+	conn := c.getConn()
+	c.Info("connected to server: %v [fastest]", conn.RemoteAddr().String())
+	go c.netLoop(conn)
 	c.retryTimes = 0
 	c.ConnectTime = time.Now()
 	return nil
@@ -109,7 +150,8 @@ func (c *QQClient) connectFastest() error {
 
 // connect 连接到 QQClient.servers 中的服务器
 func (c *QQClient) connect() error {
-	c.Info("connect to server: %v", c.servers[c.currServerIndex].String())
+	return c.connectFastest() // 暂时
+	/*c.Info("connect to server: %v", c.servers[c.currServerIndex].String())
 	err := c.TCP.Connect(c.servers[c.currServerIndex])
 	c.currServerIndex++
 	if c.currServerIndex == len(c.servers) {
@@ -129,7 +171,7 @@ func (c *QQClient) connect() error {
 	}
 	c.retryTimes = 0
 	c.ConnectTime = time.Now()
-	return nil
+	return nil*/
 }
 
 // quickReconnect 快速重连
@@ -149,15 +191,20 @@ func (c *QQClient) quickReconnect() {
 	}
 }
 
-// Disconnect 中断连接, 不释放资源
+// Disconnect 中断连接
 func (c *QQClient) Disconnect() {
+	if conn := c.cleanConn(); conn != nil {
+		_ = conn.Close()
+	}
 	c.Online = false
-	c.TCP.Close()
-	c.alive = false
 }
 
 // sendAndWait 向服务器发送一个数据包, 并等待返回
 func (c *QQClient) sendAndWait(seq uint16, pkt []byte, params ...requestParams) (interface{}, error) {
+	c.Debug("send seq:%v", seq)
+	// 整个sendAndWait使用同一个connection防止串线
+	conn := c.getConn()
+
 	type T struct {
 		Response interface{}
 		Error    error
@@ -176,38 +223,42 @@ func (c *QQClient) sendAndWait(seq uint16, pkt []byte, params ...requestParams) 
 		}
 	}, params: p, dynamic: false})
 
-	err := c.sendPacket(pkt)
-	if err != nil {
-		c.handlers.Delete(seq)
-		return nil, err
-	}
-
-	retry := 0
-	for {
+	for retry := 0; retry < 3; retry++ {
+		err := c.sendPacketWithConn(conn, pkt)
+		if err != nil {
+			c.handlers.Delete(seq)
+			return nil, err
+		}
 		select {
 		case rsp := <-ch:
 			return rsp.Response, rsp.Error
-		case <-time.After(time.Second * 15):
-			retry++
-			if retry < 2 {
-				_ = c.sendPacket(pkt)
-				continue
-			}
+		case <-time.After(time.Second * 5):
 			c.handlers.Delete(seq)
-			return nil, errors.New("Packet timed out")
 		}
 	}
+	return nil, errors.New("Packet timed out")
 }
 
 // sendPacket 向服务器发送一个数据包
 func (c *QQClient) sendPacket(pkt []byte) error {
-	err := c.TCP.Write(pkt)
+	return c.sendPacketWithConn(c.getConn(), pkt)
+}
+
+func (c *QQClient) sendPacketWithConn(conn *net.TCPConn, pkt []byte) error {
+	if conn == nil {
+		return ErrNotConnected
+	}
+	n, err := conn.Write(pkt)
+	if n != len(pkt) {
+		err = io.ErrShortWrite
+	}
 	if err != nil {
 		atomic.AddUint64(&c.stat.PacketLost, 1)
-	} else {
-		atomic.AddUint64(&c.stat.PacketSent, 1)
+		return errors.Wrap(err, "Packet failed to sendPacket")
 	}
-	return errors.Wrap(err, "Packet failed to sendPacket")
+	atomic.AddUint64(&c.stat.PacketSent, 1)
+	return nil
+
 }
 
 // waitPacket
@@ -240,14 +291,14 @@ func (c *QQClient) sendAndWaitDynamic(seq uint16, pkt []byte) ([]byte, error) {
 }
 
 // plannedDisconnect 计划中断线事件
-func (c *QQClient) plannedDisconnect(_ *utils.TCPDialer) {
-	c.Debug("planned disconnect.")
-	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
-	c.Online = false
-}
+//func (c *QQClient) plannedDisconnect(_ *utils.TCPDialer) {
+//	c.Debug("planned disconnect.")
+//	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
+//	c.Online = false
+//}
 
 // unexpectedDisconnect 非预期断线事件
-func (c *QQClient) unexpectedDisconnect(_ *utils.TCPDialer, e error) {
+func (c *QQClient) unexpectedDisconnect(e error) {
 	c.Error("unexpected disconnect: %v", e)
 	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
 	c.Online = false
@@ -264,38 +315,46 @@ func (c *QQClient) unexpectedDisconnect(_ *utils.TCPDialer, e error) {
 	}
 }
 
+func readPacket(conn *net.TCPConn, minSize, maxSize uint32) ([]byte, error) {
+	lBuf := make([]byte, 4)
+	_, err := io.ReadFull(conn, lBuf)
+	if err != nil {
+		return nil, err
+	}
+	l := binary.BigEndian.Uint32(lBuf)
+	if l < minSize || l > maxSize {
+		return nil, fmt.Errorf("parse incoming packet error: invalid packet length %v", l)
+	}
+	buf := make([]byte, l-4)
+	_, err = io.ReadFull(conn, buf)
+	return buf, err
+}
+
 // netLoop 通过循环来不停接收数据包
-func (c *QQClient) netLoop() {
-	c.netAlive = true
+func (c *QQClient) netLoop(conn *net.TCPConn) {
 	errCount := 0
-	for c.alive {
-		l, err := c.TCP.ReadInt32()
+	for {
+		data, err := readPacket(conn, 4, 10<<20) // max 10MB
 		if err != nil {
-			time.Sleep(time.Millisecond * 500)
-			continue
-		}
-		if l < 4 || l > 1024*1024*10 { // max 10MB
-			c.Error("parse incoming packet error: invalid packet length %v", l)
-			errCount++
-			if errCount > 2 {
-				go c.quickReconnect()
+			// 连接未改变，没有建立新连接
+			if c.getConn() == conn {
+				c.unexpectedDisconnect(err)
 			}
-			continue
+			break
 		}
-		data, _ := c.TCP.ReadBytes(int(l) - 4)
 		pkt, err := packets.ParseIncomingPacket(data, c.sigInfo.d2Key)
 		if err != nil {
 			c.Error("parse incoming packet error: %v", err)
 			if errors.Is(err, packets.ErrSessionExpired) || errors.Is(err, packets.ErrPacketDropped) {
 				c.Disconnect()
 				go c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "session expired"})
-				continue
+				break
 			}
 			errCount++
 			if errCount > 2 {
 				go c.quickReconnect()
 			}
-			continue
+			break
 		}
 		if pkt.Flag2 == 2 {
 			pkt.Payload, err = pkt.DecryptPayload(c.ecdh.InitialShareKey, c.RandomKey, c.sigInfo.wtSessionTicketKey)
@@ -305,7 +364,7 @@ func (c *QQClient) netLoop() {
 			}
 		}
 		errCount = 0
-		c.Debug("rev pkt: %v seq: %v", pkt.CommandName, pkt.SequenceId)
+		c.Debug("rev cmd: %v seq: %v", pkt.CommandName, pkt.SequenceId)
 		atomic.AddUint64(&c.stat.PacketReceived, 1)
 		go func(pkt *packets.IncomingPacket) {
 			defer func() {
@@ -343,9 +402,9 @@ func (c *QQClient) netLoop() {
 				// does not need decoder
 				f.fun(pkt.Payload, nil)
 			} else {
-				c.Debug("Unhandled Command: %s\nSeq: %d\nThis message can be ignored.", pkt.CommandName, pkt.SequenceId)
+				c.Debug("Unhandled Command: %s Seq: %d This message can be ignored.", pkt.CommandName, pkt.SequenceId)
 			}
 		}(pkt)
 	}
-	c.netAlive = false
+	_ = conn.Close()
 }

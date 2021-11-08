@@ -28,9 +28,9 @@ type QQClient struct {
 	Uin         int64
 	PasswordMd5 [16]byte
 
-	stat     Statistics
-	netAlive bool
-	once     sync.Once
+	stat Statistics
+	once sync.Once
+	conn *net.TCPConn
 
 	// option
 	AllowSlider bool
@@ -50,7 +50,6 @@ type QQClient struct {
 	SequenceId              int32
 	OutGoingPacketSessionId []byte
 	RandomKey               []byte
-	TCP                     *utils.TCPDialer
 	ConnectTime             time.Time
 
 	// internal state
@@ -113,6 +112,7 @@ type QQClient struct {
 	// handlers
 	groupMessageReceiptHandler sync.Map
 	EventHandler
+	Logger
 
 	groupListLock sync.Mutex
 }
@@ -203,7 +203,7 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		AllowSlider:             true,
 		RandomKey:               make([]byte, 16),
 		OutGoingPacketSessionId: []byte{0x02, 0xB0, 0x5B, 0x8B},
-		TCP:                     &utils.TCPDialer{},
+		Logger:                  nopLogger{},
 		sigInfo:                 &loginSigInfo{},
 		requestPacketRequestID:  1921334513,
 		groupSeq:                int32(rand.Intn(20000)),
@@ -265,8 +265,8 @@ func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 		if len(cli.servers) > 3 {
 			cli.servers = cli.servers[0 : len(cli.servers)/2] // 保留ping值中位数以上的server
 		}*/
-	cli.TCP.PlannedDisconnect(cli.plannedDisconnect)
-	cli.TCP.UnexpectedDisconnect(cli.unexpectedDisconnect)
+	//cli.TCP.PlannedDisconnect(cli.plannedDisconnect)
+	//cli.TCP.UnexpectedDisconnect(cli.unexpectedDisconnect)
 	rand.Read(cli.RandomKey)
 	return cli
 }
@@ -275,13 +275,6 @@ func (c *QQClient) UseDevice(info *DeviceInfo) {
 	c.version = genVersionInfo(info.Protocol)
 	c.ksid = []byte(fmt.Sprintf("|%s|A8.2.7.27f6ea96", info.IMEI))
 	c.deviceInfo = info
-}
-
-func (c *QQClient) Release() {
-	if c.Online {
-		c.Disconnect()
-	}
-	c.alive = false
 }
 
 // Login send login request
@@ -346,7 +339,12 @@ func (c *QQClient) ReLogin() error {
 	if err != nil {
 		return err
 	}
-	return c.init(true)
+	err = c.init(true)
+	// 登录失败
+	if err != nil {
+		c.Disconnect()
+	}
+	return err
 }
 
 func (c *QQClient) LoadState(token []byte) {
@@ -520,25 +518,28 @@ func (c *QQClient) init(tokenLogin bool) error {
 	if len(c.g) == 0 {
 		c.Warning("device lock is disable. http api may fail.")
 	}
-	if err := c.registerClient(); err != nil {
-		return errors.Wrap(err, "register error")
-	}
 	if tokenLogin {
-		notify := make(chan struct{})
-		d := c.waitPacket("StatSvc.ReqMSFOffline", func(i interface{}, err error) {
-			notify <- struct{}{}
-		})
-		d2 := c.waitPacket("MessageSvc.PushForceOffline", func(i interface{}, err error) {
-			notify <- struct{}{}
-		})
-		select {
-		case <-notify:
-			d()
-			d2()
-			return errors.New("token failed")
-		case <-time.After(time.Second):
-			d()
-			d2()
+		err := func() error {
+
+			notify := make(chan struct{})
+			defer c.waitPacket("StatSvc.ReqMSFOffline", func(i interface{}, err error) {
+				notify <- struct{}{}
+			})()
+			defer c.waitPacket("MessageSvc.PushForceOffline", func(i interface{}, err error) {
+				notify <- struct{}{}
+			})()
+			if err := c.registerClient(); err != nil {
+				return errors.Wrap(err, "register error")
+			}
+			select {
+			case <-notify:
+				return errors.New("token failed")
+			case <-time.After(time.Second):
+				return nil
+			}
+		}()
+		if err != nil {
+			return err
 		}
 	}
 	c.groupSysMsgCache, _ = c.GetGroupSystemMessages()
@@ -975,6 +976,10 @@ func (c *QQClient) nextHighwayApplySeq() int32 {
 }
 
 func (c *QQClient) doHeartbeat() {
+	// 不需要atomic/锁
+	if c.heartbeatEnabled {
+		return
+	}
 	c.heartbeatEnabled = true
 	times := 0
 	ticker := time.NewTicker(time.Second * 30)
@@ -988,7 +993,7 @@ func (c *QQClient) doHeartbeat() {
 		sso := packets.BuildSsoPacket(seq, c.version.AppId, c.version.SubAppId, "Heartbeat.Alive", c.deviceInfo.IMEI, []byte{}, c.OutGoingPacketSessionId, []byte{}, c.ksid)
 		packet := packets.BuildLoginPacket(c.Uin, 0, []byte{}, sso, []byte{})
 		_, err := c.sendAndWait(seq, packet)
-		if errors.Is(err, utils.ErrConnectionClosed) {
+		if err != nil {
 			continue
 		}
 		times++
@@ -1000,6 +1005,7 @@ func (c *QQClient) doHeartbeat() {
 }
 
 func (c *QQClient) Error(msg string, args ...interface{}) {
+	c.Logger.Error(c, msg, args...)
 	/*	c.LogEventHandler(&LogEvent{
 		Type:    "ERROR",
 		Message: fmt.Sprintf(msg, args...),
@@ -1007,6 +1013,7 @@ func (c *QQClient) Error(msg string, args ...interface{}) {
 }
 
 func (c *QQClient) Warning(msg string, args ...interface{}) {
+	c.Logger.Warning(c, msg, args...)
 	/*	c.LogEventHandler(&LogEvent{
 		Type:    "WARNING",
 		Message: fmt.Sprintf(msg, args...),
@@ -1014,6 +1021,7 @@ func (c *QQClient) Warning(msg string, args ...interface{}) {
 }
 
 func (c *QQClient) Info(msg string, args ...interface{}) {
+	c.Logger.Info(c, msg, args...)
 	/*	c.dispatchLogEvent(&LogEvent{
 		Type:    "INFO",
 		Message: fmt.Sprintf(msg, args...),
@@ -1021,6 +1029,7 @@ func (c *QQClient) Info(msg string, args ...interface{}) {
 }
 
 func (c *QQClient) Debug(msg string, args ...interface{}) {
+	c.Logger.Debug(c, msg, args...)
 	/*	c.dispatchLogEvent(&LogEvent{
 		Type:    "DEBUG",
 		Message: fmt.Sprintf(msg, args...),
@@ -1028,6 +1037,7 @@ func (c *QQClient) Debug(msg string, args ...interface{}) {
 }
 
 func (c *QQClient) Trace(msg string, args ...interface{}) {
+	c.Logger.Trace(c, msg, args...)
 	/*	c.dispatchLogEvent(&LogEvent{
 		Type:    "TRACE",
 		Message: fmt.Sprintf(msg, args...),
