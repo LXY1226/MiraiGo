@@ -662,3 +662,43 @@ func (c *QQClient) packOIDBPackageProto(cmd, serviceType int32, msg proto.Messag
 	b, _ := proto.Marshal(msg)
 	return c.packOIDBPackage(cmd, serviceType, b)
 }
+
+func (c *QQClient) Error(msg string, args ...interface{}) {
+	c.Logger.Error(c, msg, args...)
+	/*	c.LogEventHandler(&LogEvent{
+		Type:    "ERROR",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Warning(msg string, args ...interface{}) {
+	c.Logger.Warning(c, msg, args...)
+	/*	c.LogEventHandler(&LogEvent{
+		Type:    "WARNING",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Info(msg string, args ...interface{}) {
+	c.Logger.Info(c, msg, args...)
+	/*	c.dispatchLogEvent(&LogEvent{
+		Type:    "INFO",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Debug(msg string, args ...interface{}) {
+	c.Logger.Debug(c, msg, args...)
+	/*	c.dispatchLogEvent(&LogEvent{
+		Type:    "DEBUG",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
+
+func (c *QQClient) Trace(msg string, args ...interface{}) {
+	c.Logger.Trace(c, msg, args...)
+	/*	c.dispatchLogEvent(&LogEvent{
+		Type:    "TRACE",
+		Message: fmt.Sprintf(msg, args...),
+	})*/
+}
