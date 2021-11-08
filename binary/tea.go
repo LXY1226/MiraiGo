@@ -17,11 +17,10 @@ type TEA [4]uint32
 // http://bbs.chinaunix.net/thread-583468-1-1.html
 // 感谢xichen大佬对TEA的解释
 func (t *TEA) Encrypt(src []byte) (dst []byte) {
-	lens := len(src)
-	fill := 10 - (lens+1)%8
+	fill := 10 - (len(src)+1)%8
 	tmp1 := make([]byte, 8) // 非纯src的数据
 	tmp2 := make([]byte, 8)
-	dst = make([]byte, fill+lens+7)
+	dst = make([]byte, fill+len(src)+7)
 	// for i := 0; i < fill; i++ {
 	//	 dst[i] = ' '
 	// } // For test purpose
@@ -48,6 +47,7 @@ func (t *TEA) Encrypt(src []byte) (dst []byte) {
 		out = 16
 	}
 	// #3+或#4+
+	lens := len(src)
 	lens -= 8
 	for in < lens {
 		xorQ(src[in:in+8], dst[out-8:out], dst[out:out+8]) // 与前一次结果xor
