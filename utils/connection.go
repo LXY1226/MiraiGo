@@ -3,7 +3,6 @@ package utils
 import (
 	"encoding/binary"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -14,7 +13,7 @@ import (
 
 type TCPDialer struct {
 	lock                 sync.RWMutex
-	conn                 net.Conn
+	conn                 *net.TCPConn
 	plannedDisconnect    func(*TCPDialer)
 	unexpectedDisconnect func(*TCPDialer, error)
 }
@@ -53,7 +52,6 @@ func (t *TCPDialer) ConnectFastestAndSort(addrs []*net.TCPAddr) error {
 				return
 			}
 			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&t.conn)), unsafe.Pointer(conn))
-			log.Println("已连接至", remote.IP)
 			ch <- nil
 		}(remote)
 	}

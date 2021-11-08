@@ -373,7 +373,7 @@ func decodeGuildMessagePushPacket(c *QQClient, _ *incomingPacketInfo, payload []
 						continue
 					}
 					// todo: 如果是别人消息被贴表情, 会在在后续继续推送一个 empty tips, 可以从那个消息获取到 OperatorId
-					c.dispatchGuildMessageReactionsUpdatedEvent(&GuildMessageReactionsUpdatedEvent{
+					c.EventHandler.GuildMessageReactionsUpdatedHandler(c, &GuildMessageReactionsUpdatedEvent{
 						MessageId:        t[0].Head.ContentHead.GetSeq(),
 						CurrentReactions: decodeGuildMessageEmojiReactions(t[0]),
 					})
@@ -382,7 +382,7 @@ func decodeGuildMessagePushPacket(c *QQClient, _ *incomingPacketInfo, payload []
 			continue
 		}
 		if cm := c.parseGuildChannelMessage(m); cm != nil {
-			c.dispatchGuildChannelMessage(cm)
+			c.EventHandler.GuildChannelMessageHandler(c, cm)
 		}
 	}
 	return nil, nil
