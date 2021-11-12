@@ -347,7 +347,12 @@ func (c *QQClient) ReLogin() error {
 	return err
 }
 
-func (c *QQClient) LoadState(token []byte) {
+func (c *QQClient) loadState(token []byte, errCh chan error) {
+	defer func() {
+		if err := recover(); err != nil {
+			errCh <- err.(error)
+		}
+	}()
 	r := binary.NewReader(token)
 	c.Uin = r.ReadInt64()
 	c.sigInfo.d2 = r.ReadBytesShort()
@@ -387,6 +392,13 @@ func (c *QQClient) LoadState(token []byte) {
 
 	SystemDeviceInfo.GenNewGuid()
 	SystemDeviceInfo.GenNewTgtgtKey()
+	errCh <- nil
+}
+
+func (c *QQClient) LoadState(token []byte) error {
+	errCh := make(chan error)
+	go c.loadState(token, errCh)
+	return <-errCh
 }
 
 func (c *QQClient) SaveState() []byte {

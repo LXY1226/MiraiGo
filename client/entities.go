@@ -88,7 +88,10 @@ type (
 		TotalCount int32
 		List       []*FriendInfo
 	}
+)
 
+// Events
+type (
 	OtherClientStatusChangedEvent struct {
 		Client *OtherClientInfo
 		Online bool
@@ -230,6 +233,22 @@ type (
 		CurrentReactions []*message.GuildMessageEmojiReaction
 	}
 
+	GuildChannelUpdatedEvent struct {
+		OperatorId     uint64
+		GuildId        uint64
+		ChannelId      uint64
+		OldChannelInfo *ChannelInfo
+		NewChannelInfo *ChannelInfo
+	}
+
+	groupMessageReceiptEvent struct {
+		Rand int32
+		Seq  int32
+		Msg  *message.GroupMessage
+	}
+)
+
+type (
 	OcrResponse struct {
 		Texts    []*TextDetection `json:"texts"`
 		Language string           `json:"language"`
@@ -257,19 +276,6 @@ type (
 		list    []*GroupMemberInfo
 	}
 
-	imageUploadResponse struct {
-		UploadKey  []byte
-		UploadIp   []uint32
-		UploadPort []uint32
-		ResourceId string
-		Message    string
-		FileId     int64
-		Width      int32
-		Height     int32
-		ResultCode int32
-		IsExists   bool
-	}
-
 	pttUploadResponse struct {
 		ResultCode int32
 		Message    string
@@ -282,12 +288,6 @@ type (
 		UploadPort []uint32
 		FileKey    []byte
 		FileId     int64
-	}
-
-	groupMessageReceiptEvent struct {
-		Rand int32
-		Seq  int32
-		Msg  *message.GroupMessage
 	}
 
 	bigDataSessionInfo struct {

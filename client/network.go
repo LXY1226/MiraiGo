@@ -99,7 +99,7 @@ func (c *QQClient) setConn(conn *net.TCPConn) {
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(conn))
 }
 
-func (c *QQClient) cleanConn() *net.TCPConn {
+func (c *QQClient) closeConn() *net.TCPConn {
 	return (*net.TCPConn)(atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(nil)))
 }
 
@@ -109,7 +109,7 @@ func (c *QQClient) connectFastest() error {
 	c.Debug("connectFastest")
 	// 清理存在的解码句柄
 	c.handlers = HandlerMap{}
-
+	c.Disconnect()
 	ch := make(chan error)
 	wg := sync.WaitGroup{}
 	wg.Add(len(c.servers))
@@ -193,7 +193,7 @@ func (c *QQClient) quickReconnect() {
 
 // Disconnect 中断连接
 func (c *QQClient) Disconnect() {
-	if conn := c.cleanConn(); conn != nil {
+	if conn := c.closeConn(); conn != nil {
 		_ = conn.Close()
 	}
 	c.Online = false

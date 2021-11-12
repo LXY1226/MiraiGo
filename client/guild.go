@@ -2,10 +2,10 @@ package client
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client/pb/channel"
-	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/Mrs4s/MiraiGo/utils"
 	"github.com/pkg/errors"
@@ -74,9 +74,41 @@ type (
 		Time        uint64
 		EventTime   uint32
 		NotifyType  uint32
-		ChannelType uint32
+		ChannelType ChannelType
 		AtAllSeq    uint64
+		Meta        *ChannelMeta
+
+		fetchTime int64
 	}
+
+	ChannelMeta struct {
+		CreatorUin           int64
+		CreatorTinyId        uint64
+		CreateTime           int64
+		GuildId              uint64
+		VisibleType          int32
+		TopMessageSeq        uint64
+		TopMessageTime       int64
+		TopMessageOperatorId uint64
+		CurrentSlowMode      int32
+		TalkPermission       int32
+		SlowModes            []*ChannelSlowModeInfo
+	}
+
+	ChannelSlowModeInfo struct {
+		SlowModeKey    int32
+		SpeakFrequency int32
+		SlowModeCircle int32
+		SlowModeText   string
+	}
+
+	ChannelType int32
+)
+
+const (
+	ChannelTypeText  ChannelType = 1
+	ChannelTypeVoice ChannelType = 2
+	ChannelTypeLive  ChannelType = 5
 )
 
 func init() {
@@ -138,20 +170,16 @@ func (s *GuildService) GetUserProfile(tinyId uint64) (*GuildUserProfile, error) 
 	if err != nil {
 		return nil, errors.Wrap(err, "send packet error")
 	}
-	pkg := new(oidb.OIDBSSOPkg)
-	oidbRsp := new(channel.ChannelOidb0Xfc9Rsp)
-	if err = proto.Unmarshal(rsp, pkg); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
-	}
-	if err = proto.Unmarshal(pkg.Bodybuffer, oidbRsp); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+	body := new(channel.ChannelOidb0Xfc9Rsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
 	}
 	// todo: 解析个性档案
 	return &GuildUserProfile{
 		TinyId:    tinyId,
-		Nickname:  oidbRsp.Profile.GetNickname(),
-		AvatarUrl: oidbRsp.Profile.GetAvatarUrl(),
-		JoinTime:  oidbRsp.Profile.GetJoinTime(),
+		Nickname:  body.Profile.GetNickname(),
+		AvatarUrl: body.Profile.GetAvatarUrl(),
+		JoinTime:  body.Profile.GetJoinTime(),
 	}, nil
 }
 
@@ -175,13 +203,9 @@ func (s *GuildService) GetGuildMembers(guildId uint64) (bots []*GuildMemberInfo,
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "send packet error")
 	}
-	pkg := new(oidb.OIDBSSOPkg)
-	oidbRsp := new(channel.ChannelOidb0Xf5BRsp)
-	if err = proto.Unmarshal(rsp, pkg); err != nil {
-		return nil, nil, nil, errors.Wrap(err, "failed to unmarshal protobuf message")
-	}
-	if err = proto.Unmarshal(pkg.Bodybuffer, oidbRsp); err != nil {
-		return nil, nil, nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+	body := new(channel.ChannelOidb0Xf5BRsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, nil, nil, errors.Wrap(err, "decode packet error")
 	}
 	protoToMemberInfo := func(mem *channel.GuildMemberInfo) *GuildMemberInfo {
 		return &GuildMemberInfo{
@@ -192,13 +216,13 @@ func (s *GuildService) GetGuildMembers(guildId uint64) (bots []*GuildMemberInfo,
 			Role:          mem.GetRole(),
 		}
 	}
-	for _, mem := range oidbRsp.Bots {
+	for _, mem := range body.Bots {
 		bots = append(bots, protoToMemberInfo(mem))
 	}
-	for _, mem := range oidbRsp.Members {
+	for _, mem := range body.Members {
 		members = append(members, protoToMemberInfo(mem))
 	}
-	for _, mem := range oidbRsp.AdminInfo.Admins {
+	for _, mem := range body.AdminInfo.Admins {
 		admins = append(admins, protoToMemberInfo(mem))
 	}
 	return
@@ -222,20 +246,16 @@ func (s *GuildService) GetGuildMemberProfileInfo(guildId, tinyId uint64) (*Guild
 	if err != nil {
 		return nil, errors.Wrap(err, "send packet error")
 	}
-	pkg := new(oidb.OIDBSSOPkg)
-	oidbRsp := new(channel.ChannelOidb0Xf88Rsp)
-	if err = proto.Unmarshal(rsp, pkg); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
-	}
-	if err = proto.Unmarshal(pkg.Bodybuffer, oidbRsp); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+	body := new(channel.ChannelOidb0Xf88Rsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
 	}
 	// todo: 解析个性档案
 	return &GuildUserProfile{
 		TinyId:    tinyId,
-		Nickname:  oidbRsp.Profile.GetNickname(),
-		AvatarUrl: oidbRsp.Profile.GetAvatarUrl(),
-		JoinTime:  oidbRsp.Profile.GetJoinTime(),
+		Nickname:  body.Profile.GetNickname(),
+		AvatarUrl: body.Profile.GetAvatarUrl(),
+		JoinTime:  body.Profile.GetJoinTime(),
 	}, nil
 }
 
@@ -261,24 +281,53 @@ func (s *GuildService) FetchGuestGuild(guildId uint64) (*GuildMeta, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "send packet error")
 	}
-	pkg := new(oidb.OIDBSSOPkg)
-	oidbRsp := new(channel.ChannelOidb0Xf57Rsp)
-	if err = proto.Unmarshal(rsp, pkg); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
-	}
-	if err = proto.Unmarshal(pkg.Bodybuffer, oidbRsp); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+	body := new(channel.ChannelOidb0Xf57Rsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
 	}
 	return &GuildMeta{
-		GuildName:      oidbRsp.Rsp.Meta.GetName(),
-		GuildProfile:   oidbRsp.Rsp.Meta.GetProfile(),
-		MaxMemberCount: oidbRsp.Rsp.Meta.GetMaxMemberCount(),
-		MemberCount:    oidbRsp.Rsp.Meta.GetMemberCount(),
-		CreateTime:     oidbRsp.Rsp.Meta.GetCreateTime(),
-		MaxRobotCount:  oidbRsp.Rsp.Meta.GetRobotMaxNum(),
-		MaxAdminCount:  oidbRsp.Rsp.Meta.GetAdminMaxNum(),
-		OwnerId:        oidbRsp.Rsp.Meta.GetOwnerId(),
+		GuildName:      body.Rsp.Meta.GetName(),
+		GuildProfile:   body.Rsp.Meta.GetProfile(),
+		MaxMemberCount: body.Rsp.Meta.GetMaxMemberCount(),
+		MemberCount:    body.Rsp.Meta.GetMemberCount(),
+		CreateTime:     body.Rsp.Meta.GetCreateTime(),
+		MaxRobotCount:  body.Rsp.Meta.GetRobotMaxNum(),
+		MaxAdminCount:  body.Rsp.Meta.GetAdminMaxNum(),
+		OwnerId:        body.Rsp.Meta.GetOwnerId(),
 	}, nil
+}
+
+func (s *GuildService) FetchChannelList(guildId uint64) (r []*ChannelInfo, e error) {
+	seq := s.c.nextSeq()
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf5d_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
+		s.c.packOIDBPackageDynamically(3933, 1, binary.DynamicProtoMessage{1: guildId, 3: binary.DynamicProtoMessage{1: uint32(1)}}))
+	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
+	if err != nil {
+		return nil, errors.Wrap(err, "send packet error")
+	}
+	body := new(channel.ChannelOidb0Xf5DRsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
+	}
+	for _, info := range body.Rsp.Channels {
+		r = append(r, convertChannelInfo(info))
+	}
+	return
+}
+
+func (s *GuildService) FetchChannelInfo(guildId, channelId uint64) (*ChannelInfo, error) {
+	seq := s.c.nextSeq()
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf55_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
+		s.c.packOIDBPackageDynamically(3925, 1, binary.DynamicProtoMessage{1: guildId, 2: channelId}))
+	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
+	if err != nil {
+		return nil, errors.Wrap(err, "send packet error")
+	}
+	body := new(channel.ChannelOidb0Xf55Rsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
+	}
+	return convertChannelInfo(body.Info), nil
 }
 
 /* need analysis
@@ -305,6 +354,39 @@ func (s *GuildService) fetchChannelListState(guildId uint64, channels []*Channel
 	}
 }
 */
+
+func convertChannelInfo(info *channel.GuildChannelInfo) *ChannelInfo {
+	meta := &ChannelMeta{
+		CreatorUin:      info.GetCreatorUin(),
+		CreatorTinyId:   info.GetCreatorTinyId(),
+		CreateTime:      info.GetCreateTime(),
+		GuildId:         info.GetGuildId(),
+		VisibleType:     info.GetVisibleType(),
+		CurrentSlowMode: info.GetCurrentSlowModeKey(),
+		TalkPermission:  info.GetTalkPermission(),
+	}
+	if info.TopMsg != nil {
+		meta.TopMessageSeq = info.TopMsg.GetTopMsgSeq()
+		meta.TopMessageTime = info.TopMsg.GetTopMsgTime()
+		meta.TopMessageOperatorId = info.TopMsg.GetTopMsgOperatorTinyId()
+	}
+	for _, slow := range info.SlowModeInfos {
+		meta.SlowModes = append(meta.SlowModes, &ChannelSlowModeInfo{
+			SlowModeKey:    slow.GetSlowModeKey(),
+			SpeakFrequency: slow.GetSpeakFrequency(),
+			SlowModeCircle: slow.GetSlowModeCircle(),
+			SlowModeText:   slow.GetSlowModeText(),
+		})
+	}
+	return &ChannelInfo{
+		ChannelId:   info.GetChannelId(),
+		ChannelName: info.GetChannelName(),
+		NotifyType:  uint32(info.GetFinalNotifyType()),
+		ChannelType: ChannelType(info.GetChannelType()),
+		Meta:        meta,
+		fetchTime:   time.Now().Unix(),
+	}
+}
 
 func (c *QQClient) syncChannelFirstView() {
 	rsp, err := c.sendAndWaitDynamic(c.buildSyncChannelFirstViewPacket())
@@ -353,18 +435,24 @@ func decodeGuildPushFirstView(c *QQClient, _ *incomingPacketInfo, payload []byte
 				CoverUrl:  fmt.Sprintf("https://groupprocover-76483.picgzc.qpic.cn/%v", guild.GetGuildId()),
 				AvatarUrl: fmt.Sprintf("https://groupprohead-76292.picgzc.qpic.cn/%v", guild.GetGuildId()),
 			}
-			for _, node := range guild.ChannelNodes {
-				meta := new(channel.ChannelMsgMeta)
-				_ = proto.Unmarshal(node.Meta, meta)
-				info.Channels = append(info.Channels, &ChannelInfo{
-					ChannelId:   node.GetChannelId(),
-					ChannelName: utils.B2S(node.ChannelName),
-					Time:        node.GetTime(),
-					EventTime:   node.GetEventTime(),
-					NotifyType:  node.GetNotifyType(),
-					ChannelType: node.GetChannelType(),
-					AtAllSeq:    meta.GetAtAllSeq(),
-				})
+			channels, err := c.GuildService.FetchChannelList(info.GuildId)
+			if err != nil {
+				c.Warning("waring: fetch guild %v channel error %v. will use sync node to fill channel list field", guild.GuildId, err)
+				for _, node := range guild.ChannelNodes {
+					meta := new(channel.ChannelMsgMeta)
+					_ = proto.Unmarshal(node.Meta, meta)
+					info.Channels = append(info.Channels, &ChannelInfo{
+						ChannelId:   node.GetChannelId(),
+						ChannelName: utils.B2S(node.ChannelName),
+						Time:        node.GetTime(),
+						EventTime:   node.GetEventTime(),
+						NotifyType:  node.GetNotifyType(),
+						ChannelType: ChannelType(node.GetChannelType()),
+						AtAllSeq:    meta.GetAtAllSeq(),
+					})
+				}
+			} else {
+				info.Channels = channels
 			}
 			info.Bots, info.Members, info.Admins, _ = c.GuildService.GetGuildMembers(info.GuildId)
 			c.GuildService.Guilds = append(c.GuildService.Guilds, info)
