@@ -2,14 +2,16 @@ package client
 
 import (
 	"fmt"
+	"sort"
 	"time"
+
+	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client/pb/channel"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/Mrs4s/MiraiGo/utils"
-	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
 type (
@@ -152,6 +154,16 @@ func (g *GuildInfo) FindChannel(channelId uint64) *ChannelInfo {
 	return nil
 }
 
+func (g *GuildInfo) removeChannel(id uint64) {
+	i := sort.Search(len(g.Channels), func(i int) bool {
+		return g.Channels[i].ChannelId >= id
+	})
+	if i >= len(g.Channels) || g.Channels[i].ChannelId != id {
+		return
+	}
+	g.Channels = append(g.Channels[:i], g.Channels[i+1:]...)
+}
+
 func (s *GuildService) GetUserProfile(tinyId uint64) (*GuildUserProfile, error) {
 	seq := s.c.nextSeq()
 	flags := binary.DynamicProtoMessage{}
@@ -222,8 +234,10 @@ func (s *GuildService) GetGuildMembers(guildId uint64) (bots []*GuildMemberInfo,
 	for _, mem := range body.Members {
 		members = append(members, protoToMemberInfo(mem))
 	}
-	for _, mem := range body.AdminInfo.Admins {
-		admins = append(admins, protoToMemberInfo(mem))
+	if body.AdminInfo != nil {
+		for _, mem := range body.AdminInfo.Admins {
+			admins = append(admins, protoToMemberInfo(mem))
+		}
 	}
 	return
 }

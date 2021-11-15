@@ -6,13 +6,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/Mrs4s/MiraiGo/client/pb/cmd0x388"
-
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client/pb/cmd0x346"
+	"github.com/Mrs4s/MiraiGo/client/pb/cmd0x388"
 	"github.com/Mrs4s/MiraiGo/client/pb/msg"
 	"github.com/Mrs4s/MiraiGo/client/pb/pttcenter"
 	"github.com/Mrs4s/MiraiGo/internal/packets"

@@ -9,18 +9,16 @@ import (
 	"math/rand"
 	"strconv"
 
-	"github.com/Mrs4s/MiraiGo/binary"
-	"github.com/Mrs4s/MiraiGo/utils"
-
-	"github.com/Mrs4s/MiraiGo/client/pb/cmd0x388"
-	"github.com/Mrs4s/MiraiGo/internal/packets"
-
 	"github.com/pkg/errors"
-
-	"github.com/Mrs4s/MiraiGo/client/pb/channel"
-	"github.com/Mrs4s/MiraiGo/client/pb/msg"
-	"github.com/Mrs4s/MiraiGo/message"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/Mrs4s/MiraiGo/binary"
+	"github.com/Mrs4s/MiraiGo/client/pb/channel"
+	"github.com/Mrs4s/MiraiGo/client/pb/cmd0x388"
+	"github.com/Mrs4s/MiraiGo/client/pb/msg"
+	"github.com/Mrs4s/MiraiGo/internal/packets"
+	"github.com/Mrs4s/MiraiGo/message"
+	"github.com/Mrs4s/MiraiGo/utils"
 )
 
 type (
@@ -44,6 +42,13 @@ func init() {
 
 func (s *GuildService) SendGuildChannelMessage(guildId, channelId uint64, m *message.SendingMessage) (*message.GuildChannelMessage, error) {
 	mr := rand.Uint32() // 客户端似乎是生成的 u32 虽然类型是u64
+	at := m.FirstOrNil(func(e message.IMessageElement) bool {
+		_, ok := e.(*message.AtElement)
+		return ok
+	})
+	if at != nil {
+		at.(*message.AtElement).Guild = true
+	}
 	req := &channel.DF62ReqBody{Msg: &channel.ChannelMsgContent{
 		Head: &channel.ChannelMsgHead{
 			RoutingHead: &channel.ChannelRoutingHead{
@@ -76,6 +81,10 @@ func (s *GuildService) SendGuildChannelMessage(guildId, channelId uint64, m *mes
 	if body.GetResult() != 0 {
 		return nil, errors.Errorf("send channel message error: server response %v", body.GetResult())
 	}
+	elements := m.Elements
+	if body.Body != nil && body.Body.RichText != nil {
+		elements = message.ParseMessageElems(body.Body.RichText.Elems)
+	}
 	return &message.GuildChannelMessage{
 		Id:         body.Head.ContentHead.GetSeq(),
 		InternalId: body.Head.ContentHead.GetRandom(),
@@ -86,7 +95,7 @@ func (s *GuildService) SendGuildChannelMessage(guildId, channelId uint64, m *mes
 			TinyId:   body.Head.RoutingHead.GetFromTinyid(),
 			Nickname: s.Nickname,
 		},
-		Elements: message.ParseMessageElems(body.Body.RichText.Elems),
+		Elements: elements,
 	}, nil
 }
 

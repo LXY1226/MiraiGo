@@ -5,14 +5,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Mrs4s/MiraiGo/client/pb/msgtype0x210"
-
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/binary/jce"
 	"github.com/Mrs4s/MiraiGo/client/pb"
+	"github.com/Mrs4s/MiraiGo/client/pb/msgtype0x210"
 	"github.com/Mrs4s/MiraiGo/client/pb/notify"
 )
 
@@ -239,7 +238,7 @@ func msgType0x210Sub44Decoder(c *QQClient, protobuf []byte) error {
 	}
 	groupJoinLock.Lock()
 	defer groupJoinLock.Unlock()
-	if s44.GroupSyncMsg.GetGrpCode() != 0 { // member sync
+	if s44.GroupSyncMsg.GetGrpCode() == 0 { // member sync
 		return errors.New("invalid group code")
 	}
 	c.Debug("syncing members.")

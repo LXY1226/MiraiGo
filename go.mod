@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/klauspost/compress v1.13.6
 	github.com/pkg/errors v0.9.1
+	github.com/segmentio/asm v1.1.0
 	github.com/stretchr/testify v1.7.0
 	github.com/tidwall/gjson v1.11.0
 	golang.org/x/net v0.0.0-20211105192438-b53810dc28af
@@ -14,6 +15,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect

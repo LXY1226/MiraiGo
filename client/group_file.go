@@ -9,9 +9,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Mrs4s/MiraiGo/client/pb/exciting"
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"

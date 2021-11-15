@@ -4,11 +4,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/Mrs4s/MiraiGo/client/pb/channel"
 	"github.com/Mrs4s/MiraiGo/client/pb/msg"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
-	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
 func init() {
@@ -76,11 +77,47 @@ func decodeGuildEventFlowPacket(c *QQClient, _ *incomingPacketInfo, payload []by
 }
 
 func (c *QQClient) processGuildEventBody(m *channel.ChannelMsgContent, eventBody *channel.EventBody) {
+	var guild *GuildInfo
+	if m.Head.RoutingHead.GetGuildId() != 0 {
+		if guild = c.GuildService.FindGuild(m.Head.RoutingHead.GetGuildId()); guild == nil {
+			c.Warning("process channel event error: guild not found.")
+			return
+		}
+	}
 	switch {
+	case eventBody.CreateChan != nil:
+		for _, chanId := range eventBody.CreateChan.CreateId {
+			if guild.FindChannel(chanId.GetChanId()) != nil {
+				continue
+			}
+			channelInfo, err := c.GuildService.FetchChannelInfo(guild.GuildId, chanId.GetChanId())
+			if err != nil {
+				c.Warning("process create channel event error: fetch channel info error: %v", err)
+				continue
+			}
+			guild.Channels = append(guild.Channels, channelInfo)
+			c.EventHandler.GuildChannelCreatedHandler(c, &GuildChannelOperationEvent{
+				OperatorId:  m.Head.RoutingHead.GetFromTinyid(),
+				GuildId:     m.Head.RoutingHead.GetGuildId(),
+				ChannelInfo: channelInfo,
+			})
+		}
+	case eventBody.DestroyChan != nil:
+		for _, chanId := range eventBody.DestroyChan.DeleteId {
+			channelInfo := guild.FindChannel(chanId.GetChanId())
+			if channelInfo == nil {
+				continue
+			}
+			guild.removeChannel(chanId.GetChanId())
+			c.EventHandler.GuildChannelDestroyedHandles(c, &GuildChannelOperationEvent{
+				OperatorId:  m.Head.RoutingHead.GetFromTinyid(),
+				GuildId:     guild.GuildId,
+				ChannelInfo: channelInfo,
+			})
+		}
 	case eventBody.ChangeChanInfo != nil:
 		updateChanLock.Lock()
 		defer updateChanLock.Unlock()
-		guild := c.GuildService.FindGuild(m.Head.RoutingHead.GetGuildId())
 		oldInfo := guild.FindChannel(eventBody.ChangeChanInfo.GetChanId())
 		if time.Now().Unix()-oldInfo.fetchTime <= 2 {
 			return

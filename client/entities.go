@@ -241,6 +241,12 @@ type (
 		NewChannelInfo *ChannelInfo
 	}
 
+	GuildChannelOperationEvent struct {
+		OperatorId  uint64
+		GuildId     uint64
+		ChannelInfo *ChannelInfo
+	}
+
 	groupMessageReceiptEvent struct {
 		Rand int32
 		Seq  int32

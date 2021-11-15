@@ -1,12 +1,11 @@
 package client
 
 import (
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
-
-	"github.com/pkg/errors"
 )
 
 func (c *QQClient) buildTranslatePacket(src, dst, text string) (uint16, []byte) {
