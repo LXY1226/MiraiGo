@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/klauspost/compress v1.13.6
 	github.com/pkg/errors v0.9.1
+	github.com/stretchr/testify v1.3.0
 	github.com/segmentio/asm v1.1.0
 	github.com/stretchr/testify v1.7.0
 	github.com/tidwall/gjson v1.11.0
