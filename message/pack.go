@@ -2,6 +2,7 @@ package message
 
 import (
 	"encoding/hex"
+	"fmt"
 
 	"google.golang.org/protobuf/proto"
 
@@ -72,12 +73,11 @@ func (e *AtElement) Pack() (r []*msg.Elem) {
 					w.WriteUInt16(1)
 					w.WriteUInt16(0)
 					w.WriteUInt16(uint16(len([]rune(e.Display))))
-					w.WriteByte(func() byte {
-						if e.Target == 0 {
-							return 1
-						}
-						return 0
-					}())
+					if e.Target == 0 {
+						w.WriteByte(1)
+					} else {
+						w.WriteByte(0)
+					}
 					w.WriteUInt32(uint32(e.Target))
 					w.WriteUInt16(0)
 				}),
@@ -122,25 +122,75 @@ func (e *ShortVideoElement) Pack() (r []*msg.Elem) {
 			Str: proto.String("你的QQ暂不支持查看视频短片，请期待后续版本。"),
 		},
 	})
-	r = append(r, &msg.Elem{
-		VideoFile: &msg.VideoFile{
-			FileUuid:               e.Uuid,
-			FileMd5:                e.Md5,
-			FileName:               []byte(hex.EncodeToString(e.Md5) + ".mp4"),
-			FileFormat:             proto.Int32(3),
-			FileTime:               proto.Int32(10),
-			FileSize:               proto.Int32(e.Size),
-			ThumbWidth:             proto.Int32(1280),
-			ThumbHeight:            proto.Int32(720),
-			ThumbFileMd5:           e.ThumbMd5,
-			ThumbFileSize:          proto.Int32(e.ThumbSize),
-			BusiType:               proto.Int32(0),
-			FromChatType:           proto.Int32(-1),
-			ToChatType:             proto.Int32(-1),
-			BoolSupportProgressive: proto.Bool(true),
-			FileWidth:              proto.Int32(1280),
-			FileHeight:             proto.Int32(720),
-		},
-	})
+
+	video := &msg.VideoFile{
+		FileUuid:               e.Uuid,
+		FileMd5:                e.Md5,
+		FileName:               []byte(hex.EncodeToString(e.Md5) + ".mp4"),
+		FileFormat:             proto.Int32(3),
+		FileTime:               proto.Int32(10),
+		FileSize:               proto.Int32(e.Size),
+		ThumbWidth:             proto.Int32(1280),
+		ThumbHeight:            proto.Int32(720),
+		ThumbFileMd5:           e.ThumbMd5,
+		ThumbFileSize:          proto.Int32(e.ThumbSize),
+		BusiType:               proto.Int32(0),
+		FromChatType:           proto.Int32(-1),
+		ToChatType:             proto.Int32(-1),
+		BoolSupportProgressive: proto.Bool(true),
+		FileWidth:              proto.Int32(1280),
+		FileHeight:             proto.Int32(720),
+	}
+
+	if e.Guild {
+		video.BusiType = proto.Int32(4601)
+		video.SubBusiType = proto.Int32(4601)
+		video.FileWidth = proto.Int32(0)
+		video.FileHeight = proto.Int32(0)
+		video.VideoAttr = proto.Int32(0)
+	}
+
+	r = append(r, &msg.Elem{VideoFile: video})
 	return
+}
+
+func (e *AnimatedSticker) Pack() []*msg.Elem {
+	if e.Name == "" {
+		e.Name = faceMap[int(e.ID)]
+	}
+	name := "/" + e.Name
+	business := int32(1)
+	if e.ID == 114 {
+		// 对篮球适配，否则篮球不会投出
+		business = 2
+	}
+
+	pbElem, _ := proto.Marshal(&msg.MsgElemInfoServtype37{
+		Packid:      []byte("1"),
+		Stickerid:   []byte(stickerMap[int(e.ID)]),
+		Qsid:        proto.Uint32(uint32(e.ID)),
+		Sourcetype:  proto.Uint32(1),
+		Stickertype: proto.Uint32(uint32(business)),
+		Resultid:    []byte{},
+		Text:        []byte(name),
+		Surpriseid:  []byte{},
+		Randomtype:  proto.Uint32(1),
+	})
+	common := &msg.Elem{
+		CommonElem: &msg.CommonElem{
+			ServiceType:  proto.Int32(37),
+			PbElem:       pbElem,
+			BusinessType: &business,
+		},
+	}
+
+	pbReverse, _ := proto.Marshal(&msg.Text{Str: proto.String(fmt.Sprintf("[%s]请使用最新版手机QQ体验新功能", e.Name))})
+	text := &msg.Elem{
+		Text: &msg.Text{
+			Str:       &name,
+			PbReserve: pbReverse,
+		},
+	}
+
+	return []*msg.Elem{common, text}
 }

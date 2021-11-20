@@ -69,6 +69,7 @@ type ShortVideoElement struct {
 	Md5       []byte
 	ThumbMd5  []byte
 	Url       string
+	Guild     bool
 }
 
 type ServiceElement struct {
@@ -98,6 +99,11 @@ type MusicShareElement struct {
 	Url        string // 点击跳转链接
 	PictureUrl string // 显示图片链接
 	MusicUrl   string // 音乐播放链接
+}
+
+type AnimatedSticker struct {
+	ID   int32
+	Name string
 }
 
 type RedBagMessageType int
@@ -268,4 +274,8 @@ func (e *MusicShareElement) Type() ElementType {
 
 func (e *RedBagElement) Type() ElementType {
 	return RedBag
+}
+
+func (e *AnimatedSticker) Type() ElementType {
+	return Face
 }
