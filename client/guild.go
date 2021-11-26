@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client/pb/channel"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
+	"github.com/Mrs4s/MiraiGo/internal/proto"
 	"github.com/Mrs4s/MiraiGo/utils"
 )
 
@@ -71,14 +71,14 @@ type (
 
 	// GuildRole 频道身份组信息
 	GuildRole struct {
-		RoleId     uint64
-		RoleName   string
-		ArgbColor  uint32
-		Indepedent bool
-		Num        int32
-		Owned      bool
-		Disabled   bool
-		MaxNum     int32
+		RoleId      uint64
+		RoleName    string
+		ArgbColor   uint32
+		Independent bool
+		Num         int32
+		Owned       bool
+		Disabled    bool
+		MaxNum      int32
 	}
 
 	// ChannelInfo 子频道信息
@@ -123,6 +123,7 @@ const (
 	ChannelTypeText  ChannelType = 1
 	ChannelTypeVoice ChannelType = 2
 	ChannelTypeLive  ChannelType = 5
+	ChannelTypeTopic ChannelType = 7
 )
 
 func init() {
@@ -208,48 +209,58 @@ func (s *GuildService) GetUserProfile(tinyId uint64) (*GuildUserProfile, error) 
 }
 
 func (s *GuildService) GetGuildMembers(guildId uint64) (bots []*GuildMemberInfo, members []*GuildMemberInfo, admins []*GuildMemberInfo, err error) {
-	seq := s.c.nextSeq()
+	return s.fetchMemberListWithRole(guildId, 0, 2)
+}
+
+func (s *GuildService) fetchMemberListWithRole(guildId uint64, startIndex, roleIdIndex uint32) (bots []*GuildMemberInfo, members []*GuildMemberInfo, admins []*GuildMemberInfo, err error) {
+	finished := false
 	u1 := uint32(1)
-	// todo: 这个包实际上是 fetchMemberListWithRole , 可以按channel, role等规则获取成员列表, 还需要修改
-	payload := s.c.packOIDBPackageDynamically(3931, 1, binary.DynamicProtoMessage{ // todo: 可能还需要处理翻页的情况?
-		1: guildId, // guild id
-		2: uint32(3),
-		3: uint32(0),
-		4: binary.DynamicProtoMessage{ // unknown param, looks like flags
-			1: u1, 2: u1, 3: u1, 4: u1, 5: u1, 6: u1, 7: u1, 8: u1, 20: u1,
-		},
-		6:  uint32(0),
-		8:  uint32(500), // count
-		14: uint32(2),
-	})
-	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf5b_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, payload)
-	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
-	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "send packet error")
-	}
-	body := new(channel.ChannelOidb0Xf5BRsp)
-	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
-		return nil, nil, nil, errors.Wrap(err, "decode packet error")
-	}
-	protoToMemberInfo := func(mem *channel.GuildMemberInfo) *GuildMemberInfo {
-		return &GuildMemberInfo{
-			TinyId:        mem.GetTinyId(),
-			Title:         mem.GetTitle(),
-			Nickname:      mem.GetNickname(),
-			LastSpeakTime: mem.GetLastSpeakTime(),
-			Role:          mem.GetRole(),
+	for !finished {
+		seq := s.c.nextSeq()
+		// todo: 按 channel 获取 member list
+		payload := s.c.packOIDBPackageDynamically(3931, 1, binary.DynamicProtoMessage{
+			1: guildId, // guild id
+			2: uint32(3),
+			3: uint32(0),
+			4: binary.DynamicProtoMessage{ // unknown param, looks like flags
+				1: u1, 2: u1, 3: u1, 4: u1, 5: u1, 6: u1, 7: u1, 8: u1, 20: u1,
+			},
+			6:  startIndex,
+			8:  uint32(50), // count
+			14: roleIdIndex,
+		})
+		packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf5b_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, payload)
+		rsp, err := s.c.sendAndWaitDynamic(seq, packet)
+		if err != nil {
+			return nil, nil, nil, errors.Wrap(err, "send packet error")
 		}
-	}
-	for _, mem := range body.Bots {
-		bots = append(bots, protoToMemberInfo(mem))
-	}
-	for _, mem := range body.Members {
-		members = append(members, protoToMemberInfo(mem))
-	}
-	if body.AdminInfo != nil {
-		for _, mem := range body.AdminInfo.Admins {
-			admins = append(admins, protoToMemberInfo(mem))
+		body := new(channel.ChannelOidb0Xf5BRsp)
+		if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+			return nil, nil, nil, errors.Wrap(err, "decode packet error")
 		}
+		protoToMemberInfo := func(mem *channel.GuildMemberInfo) *GuildMemberInfo {
+			return &GuildMemberInfo{
+				TinyId:        mem.GetTinyId(),
+				Title:         mem.GetTitle(),
+				Nickname:      mem.GetNickname(),
+				LastSpeakTime: mem.GetLastSpeakTime(),
+				Role:          mem.GetRole(),
+			}
+		}
+		for _, mem := range body.Bots {
+			bots = append(bots, protoToMemberInfo(mem))
+		}
+		for _, mem := range body.Members {
+			members = append(members, protoToMemberInfo(mem))
+		}
+		if body.AdminInfo != nil {
+			for _, mem := range body.AdminInfo.Admins {
+				admins = append(admins, protoToMemberInfo(mem))
+			}
+		}
+		finished = body.NextIndex == nil || startIndex == body.GetNextIndex() // todo: 不知道什么情况, 某些群 nextIndex一直是一样的
+		startIndex = body.GetNextIndex()
+		roleIdIndex = body.GetNextRoleIdIndex()
 	}
 	return
 }
@@ -297,17 +308,53 @@ func (s *GuildService) GetGuildRoles(guildId uint64) ([]*GuildRole, error) {
 	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
 		return nil, errors.Wrap(err, "decode packet error")
 	}
-	roles := make([]*GuildRole, 0, len(body.Roles))
-	for _, role := range body.Roles {
+	roles := make([]*GuildRole, 0, len(body.GetRoles()))
+	for _, role := range body.GetRoles() {
 		roles = append(roles, &GuildRole{
-			RoleId:     role.GetRoleId(),
-			RoleName:   role.GetName(),
-			ArgbColor:  role.GetArgbColor(),
-			Indepedent: role.GetIndependent() == 1,
-			Num:        role.GetNum(),
-			Owned:      role.GetOwned() == 1,
-			Disabled:   role.GetDisabled() == 1,
-			MaxNum:     role.GetMaxNum(),
+			RoleId:      role.GetRoleId(),
+			RoleName:    role.GetName(),
+			ArgbColor:   role.GetArgbColor(),
+			Independent: role.GetIndependent() == 1,
+			Num:         role.GetNum(),
+			Owned:       role.GetOwned() == 1,
+			Disabled:    role.GetDisabled() == 1,
+			MaxNum:      role.GetMaxNum(),
+		})
+	}
+	return roles, nil
+}
+
+func (s *GuildService) GetUserRoles(guildId uint64, userId uint64) ([]*GuildRole, error) {
+	seq := s.c.nextSeq()
+	u1 := uint32(1)
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x1017_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
+		s.c.packOIDBPackageDynamically(4119, 1, binary.DynamicProtoMessage{
+			1: guildId,
+			2: userId,
+			4: binary.DynamicProtoMessage{
+				1: u1,
+				2: u1,
+				3: u1,
+			},
+		}))
+	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
+	if err != nil {
+		return nil, errors.Wrap(err, "send packet error")
+	}
+	body := new(channel.ChannelOidb0X1017Rsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
+	}
+	p1 := body.GetP1()
+	if p1 == nil {
+		return nil, errors.New("packet OidbSvcTrpcTcp.0x1017_1: decode p1 error")
+	}
+	roles := make([]*GuildRole, 0, len(p1.GetRoles()))
+	for _, role := range p1.GetRoles() {
+		roles = append(roles, &GuildRole{
+			RoleId:    role.GetRoleId(),
+			RoleName:  role.GetName(),
+			ArgbColor: role.GetArgbColor(),
 		})
 	}
 	return roles, nil
@@ -358,7 +405,6 @@ func (s *GuildService) DeleteGuildRole(guildId uint64, roleId uint64) error {
 
 func (s *GuildService) SetUserRoleInGuild(guildId uint64, set bool, roleId uint64, user []uint64) error { // remove => p2 = false
 	seq := s.c.nextSeq()
-	var packet []byte
 	setOrRemove := binary.DynamicProtoMessage{
 		1: roleId,
 	}
@@ -367,7 +413,7 @@ func (s *GuildService) SetUserRoleInGuild(guildId uint64, set bool, roleId uint6
 	} else {
 		setOrRemove[3] = user
 	}
-	packet = packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x101a_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x101a_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
 		s.c.packOIDBPackageDynamically(4122, 1, binary.DynamicProtoMessage{
 			1: guildId,
 			2: setOrRemove,

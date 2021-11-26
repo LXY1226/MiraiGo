@@ -9,6 +9,8 @@ message ChannelOidb0xf5bRsp {
   optional uint64 guildId = 1;
   repeated GuildMemberInfo bots = 4;
   repeated GuildMemberInfo members = 5;
+  optional uint32 nextRoleIdIndex = 8;
+  optional uint32 nextIndex = 10;
   optional GuildAdminInfo adminInfo = 25;
 }
 
@@ -30,6 +32,15 @@ message ChannelOidb0xf55Rsp {
 
 message ChannelOidb0xf5dRsp {
   optional ChannelListRsp rsp = 1;
+}
+
+message ChannelOidb0x1017Rsp {
+  optional P10x1017 p1 = 1;
+}
+
+message P10x1017 {
+  optional uint64 userId = 1;
+  repeated GuildRole roles = 3;
 }
 
 message ChannelOidb0x1019Rsp {
