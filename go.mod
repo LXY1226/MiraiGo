@@ -3,14 +3,13 @@ module github.com/Mrs4s/MiraiGo
 go 1.17
 
 require (
-	github.com/RomiChan/protobuf v0.0.0-20211124134334-257932207c53
+	github.com/RomiChan/protobuf v0.0.0-20211127152518-b0821787fcf9
 	github.com/klauspost/compress v1.13.6
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0
-	github.com/tidwall/gjson v1.11.0
-	golang.org/x/net v0.0.0-20211105192438-b53810dc28af
+	github.com/tidwall/gjson v1.12.0
+	golang.org/x/net v0.0.0-20211123203042-d83791d6bcd9
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	google.golang.org/protobuf v1.27.1
 )
 
 require (

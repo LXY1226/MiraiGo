@@ -247,6 +247,11 @@ type (
 		ChannelInfo *ChannelInfo
 	}
 
+	MemberJoinGuildEvent struct {
+		Guild  *GuildInfo
+		Member *GuildMemberInfo
+	}
+
 	groupMessageReceiptEvent struct {
 		Rand int32
 		Seq  int32
