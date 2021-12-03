@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pierrec/lz4/v4"
+
 	"github.com/pkg/errors"
 
 	"github.com/Mrs4s/MiraiGo/client/pb/channel"
@@ -31,6 +33,18 @@ func decodeGuildEventFlowPacket(c *QQClient, _ *incomingPacketInfo, payload []by
 	push := new(channel.MsgOnlinePush)
 	if err := proto.Unmarshal(payload, push); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+	}
+	if push.GetCompressFlag() == 1 && len(push.CompressMsg) > 0 {
+		press := new(channel.PressMsg)
+		dst := make([]byte, len(push.CompressMsg)*2)
+		i, err := lz4.UncompressBlock(push.CompressMsg, dst)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to decompress guild event packet")
+		}
+		if err = proto.Unmarshal(dst[:i], press); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
+		}
+		push.Msgs = press.Msgs
 	}
 	for _, m := range push.Msgs {
 		if m.Head.ContentHead.GetType() == 3841 {
@@ -119,6 +133,15 @@ func (c *QQClient) processGuildEventBody(m *channel.ChannelMsgContent, eventBody
 		updateChanLock.Lock()
 		defer updateChanLock.Unlock()
 		oldInfo := guild.FindChannel(eventBody.ChangeChanInfo.GetChanId())
+		if oldInfo == nil {
+			info, err := c.GuildService.FetchChannelInfo(m.Head.RoutingHead.GetGuildId(), eventBody.ChangeChanInfo.GetChanId())
+			if err != nil {
+				c.Error("error to decode channel info updated event: fetch channel info failed: %v", err)
+				return
+			}
+			guild.Channels = append(guild.Channels, info)
+			oldInfo = info
+		}
 		if time.Now().Unix()-oldInfo.fetchTime <= 2 {
 			return
 		}
