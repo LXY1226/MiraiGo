@@ -38,6 +38,10 @@ func decodeGuildEventFlowPacket(c *QQClient, _ *incomingPacketInfo, payload []by
 		press := new(channel.PressMsg)
 		dst := make([]byte, len(push.CompressMsg)*2)
 		i, err := lz4.UncompressBlock(push.CompressMsg, dst)
+		for times := 0; err != nil && err.Error() == "lz4: invalid source or destination buffer too short" && times < 5; times++ {
+			dst = append(dst, make([]byte, 1024)...)
+			i, err = lz4.UncompressBlock(push.CompressMsg, dst)
+		}
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to decompress guild event packet")
 		}
@@ -83,8 +87,15 @@ func decodeGuildEventFlowPacket(c *QQClient, _ *incomingPacketInfo, payload []by
 			c.processGuildEventBody(m, eventBody)
 			continue
 		}
-		if cm := c.parseGuildChannelMessage(m); cm != nil {
-			c.EventHandler.GuildChannelMessageHandler(c, cm)
+		if m.Head.ContentHead.GetType() == 3840 {
+			if m.Head.RoutingHead.GetDirectMessageFlag() == 1 {
+				// todo: direct message decode
+				continue
+			}
+
+			if cm := c.parseGuildChannelMessage(m); cm != nil {
+				c.EventHandler.GuildChannelMessageHandler(c, cm)
+			}
 		}
 	}
 	return nil, nil
@@ -164,10 +175,12 @@ func (c *QQClient) processGuildEventBody(m *channel.ChannelMsgContent, eventBody
 			NewChannelInfo: newInfo,
 		})
 	case eventBody.JoinGuild != nil:
+		/* 应该不会重复推送把, 不会吧不会吧
 		if mem := guild.FindMember(eventBody.JoinGuild.GetMemberTinyid()); mem != nil {
 			c.Info("ignore join guild event: member %v already exists", mem.TinyId)
 			return
 		}
+		*/
 		profile, err := c.GuildService.GetGuildMemberProfileInfo(guild.GuildId, eventBody.JoinGuild.GetMemberTinyid())
 		if err != nil {
 			c.Error("error to decode member join guild event: get member profile error: %v", err)
@@ -177,7 +190,7 @@ func (c *QQClient) processGuildEventBody(m *channel.ChannelMsgContent, eventBody
 			TinyId:   profile.TinyId,
 			Nickname: profile.Nickname,
 		}
-		guild.Members = append(guild.Members, info)
+		// guild.Members = append(guild.Members, info)
 		c.EventHandler.MemberJoinedGuildHandler(c, &MemberJoinGuildEvent{
 			Guild:  guild,
 			Member: info,
