@@ -141,7 +141,7 @@ func (c *QQClient) connectFastest() error {
 		return err
 	}
 	conn := c.getConn()
-	c.Info("connected to server: %v [fastest]", conn.RemoteAddr().String())
+	c.Debug("connected to server: %v [fastest]", conn.RemoteAddr().String())
 	go c.netLoop(conn)
 	c.retryTimes = 0
 	c.ConnectTime = time.Now()

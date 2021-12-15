@@ -356,6 +356,7 @@ func (c *QQClient) loadState(token []byte, errCh chan error) {
 	}()
 	r := binary.NewReader(token)
 	c.Uin = r.ReadInt64()
+	copy(c.PasswordMd5[:], r.ReadBytes(md5.Size))
 	c.sigInfo.d2 = r.ReadBytesShort()
 	c.sigInfo.d2Key = r.ReadBytesShort()
 	c.sigInfo.tgt = r.ReadBytesShort()
@@ -405,6 +406,7 @@ func (c *QQClient) LoadState(token []byte) error {
 func (c *QQClient) SaveState() []byte {
 	return binary.NewWriterF(func(w *binary.Writer) {
 		w.WriteUInt64(uint64(c.Uin))
+		w.Write(c.PasswordMd5[:])
 		w.WriteBytesShort(c.sigInfo.d2)
 		w.WriteBytesShort(c.sigInfo.d2Key)
 		w.WriteBytesShort(c.sigInfo.tgt)
