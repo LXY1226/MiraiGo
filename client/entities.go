@@ -224,12 +224,12 @@ type (
 	}
 
 	GuildMessageReactionsUpdatedEvent struct {
-		OperatorId       uint64 // OperatorId 操作者TinyId, 删除贴表情的事件下不会有值
-		EmojiId          int32  // EmojiId 被贴的表情, 只有自身消息被贴表情才会有值
-		GuildId          uint64
-		ChannelId        uint64
-		MessageId        uint64
-		MessageSenderUin int64 // MessageSenderUin 被贴表情的消息发送者QQ号
+		OperatorId uint64 // OperatorId 操作者TinyId, 删除贴表情的事件下不会有值
+		EmojiId    int32  // EmojiId 被贴的表情, 只有自身消息被贴表情才会有值
+		GuildId    uint64
+		ChannelId  uint64
+		MessageId  uint64
+		// MessageSenderUin int64 // MessageSenderUin 被贴表情的消息发送者QQ号
 		CurrentReactions []*message.GuildMessageEmojiReaction
 	}
 
@@ -239,6 +239,14 @@ type (
 		ChannelId      uint64
 		OldChannelInfo *ChannelInfo
 		NewChannelInfo *ChannelInfo
+	}
+
+	GuildMessageRecalledEvent struct {
+		OperatorId uint64
+		GuildId    uint64
+		ChannelId  uint64
+		MessageId  uint64
+		RecallTime int64
 	}
 
 	GuildChannelOperationEvent struct {

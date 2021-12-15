@@ -59,12 +59,14 @@ type (
 		OwnerId        uint64
 	}
 
+	// GuildMemberInfo 频道成员信息, 仅通过频道成员列表API获取
 	GuildMemberInfo struct {
 		TinyId        uint64
 		Title         string
 		Nickname      string
 		LastSpeakTime int64
-		Role          int32 // 0 = member 1 = admin 2 = owner ?
+		Role          uint64
+		RoleName      string
 	}
 
 	// GuildUserProfile 频道系统用户资料
@@ -73,6 +75,7 @@ type (
 		Nickname  string
 		AvatarUrl string
 		JoinTime  int64 // 只有 GetGuildMemberProfileInfo 函数才会有
+		Roles     []*GuildRole
 	}
 
 	// GuildRole 频道身份组信息
@@ -120,6 +123,14 @@ type (
 		SpeakFrequency int32
 		SlowModeCircle int32
 		SlowModeText   string
+	}
+
+	FetchGuildMemberListWithRoleResult struct {
+		Members        []*GuildMemberInfo
+		NextIndex      uint32
+		NextRoleId     uint64
+		NextQueryParam string
+		Finished       bool
 	}
 
 	ChannelType int32
@@ -195,64 +206,70 @@ func (s *GuildService) GetUserProfile(tinyId uint64) (*GuildUserProfile, error) 
 	}, nil
 }
 
-func (s *GuildService) GetGuildMembers(guildId uint64) (bots []*GuildMemberInfo, members []*GuildMemberInfo, admins []*GuildMemberInfo, err error) {
-	return s.fetchMemberListWithRole(guildId, 0, 2)
-}
-
-func (s *GuildService) fetchMemberListWithRole(guildId uint64, startIndex, roleIdIndex uint32) (bots []*GuildMemberInfo, members []*GuildMemberInfo, admins []*GuildMemberInfo, err error) {
-	finished := false
+// FetchGuildMemberListWithRole 获取频道成员列表
+// 第一次请求: startIndex = 0 , roleIdIndex = 2 param = ""
+// 后续请求请根据上次请求的返回值进行设置
+func (s *GuildService) FetchGuildMemberListWithRole(guildId, channelId uint64, startIndex uint32, roleIdIndex uint64, param string) (*FetchGuildMemberListWithRoleResult, error) {
+	seq := s.c.nextSeq()
 	u1 := uint32(1)
-	for !finished {
-		seq := s.c.nextSeq()
-		// todo: 按 channel 获取 member list
-		payload := s.c.packOIDBPackageDynamically(3931, 1, binary.DynamicProtoMessage{
-			1: guildId, // guild id
-			2: uint32(3),
-			3: uint32(0),
-			4: binary.DynamicProtoMessage{ // unknown param, looks like flags
-				1: u1, 2: u1, 3: u1, 4: u1, 5: u1, 6: u1, 7: u1, 8: u1, 20: u1,
-			},
-			6:  startIndex,
-			8:  uint32(50), // count
-			14: roleIdIndex,
-		})
-		packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf5b_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, payload)
-		rsp, err := s.c.sendAndWaitDynamic(seq, packet)
-		if err != nil {
-			return nil, nil, nil, errors.Wrap(err, "send packet error")
-		}
-		body := new(channel.ChannelOidb0Xf5BRsp)
-		if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
-			return nil, nil, nil, errors.Wrap(err, "decode packet error")
-		}
-		protoToMemberInfo := func(mem *channel.GuildMemberInfo) *GuildMemberInfo {
-			return &GuildMemberInfo{
+	m := binary.DynamicProtoMessage{
+		1: guildId, // guild id
+		2: uint32(3),
+		3: uint32(0),
+		4: binary.DynamicProtoMessage{ // unknown param, looks like flags
+			1: u1, 2: u1, 3: u1, 4: u1, 5: u1, 6: u1, 7: u1, 8: u1, 20: u1,
+		},
+		6:  startIndex,
+		8:  uint32(50), // count
+		12: channelId,
+	}
+	if param != "" {
+		m[13] = param
+	}
+	m[14] = roleIdIndex
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0xf5b_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, s.c.packOIDBPackageDynamically(3931, 1, m))
+	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
+	if err != nil {
+		return nil, errors.Wrap(err, "send packet error")
+	}
+	body := new(channel.ChannelOidb0Xf5BRsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
+	}
+	var ret []*GuildMemberInfo
+	for _, memberWithRole := range body.MemberWithRoles {
+		for _, mem := range memberWithRole.Members {
+			ret = append(ret, &GuildMemberInfo{
 				TinyId:        mem.GetTinyId(),
 				Title:         mem.GetTitle(),
 				Nickname:      mem.GetNickname(),
 				LastSpeakTime: mem.GetLastSpeakTime(),
-				Role:          mem.GetRole(),
-			}
+				Role:          memberWithRole.GetRoleId(),
+				RoleName:      memberWithRole.GetRoleName(),
+			})
 		}
-		for _, mem := range body.Bots {
-			bots = append(bots, protoToMemberInfo(mem))
-		}
-		for _, mem := range body.Members {
-			members = append(members, protoToMemberInfo(mem))
-		}
-		if body.AdminInfo != nil {
-			for _, mem := range body.AdminInfo.Admins {
-				admins = append(admins, protoToMemberInfo(mem))
-			}
-		}
-		finished = body.NextIndex == nil || startIndex == body.GetNextIndex() // todo: 不知道什么情况, 某些群 nextIndex一直是一样的
-		startIndex = body.GetNextIndex()
-		roleIdIndex = body.GetNextRoleIdIndex()
 	}
-	return
+	for _, mem := range body.Members {
+		ret = append(ret, &GuildMemberInfo{
+			TinyId:        mem.GetTinyId(),
+			Title:         mem.GetTitle(),
+			Nickname:      mem.GetNickname(),
+			LastSpeakTime: mem.GetLastSpeakTime(),
+			Role:          1,
+			RoleName:      "普通成员",
+		})
+	}
+	return &FetchGuildMemberListWithRoleResult{
+		Members:        ret,
+		NextIndex:      body.GetNextIndex(),
+		NextRoleId:     body.GetNextRoleIdIndex(),
+		NextQueryParam: body.GetNextQueryParam(),
+		Finished:       body.NextIndex == nil,
+	}, nil
 }
 
-func (s *GuildService) GetGuildMemberProfileInfo(guildId, tinyId uint64) (*GuildUserProfile, error) {
+// FetchGuildMemberProfileInfo 获取单个频道成员资料
+func (s *GuildService) FetchGuildMemberProfileInfo(guildId, tinyId uint64) (*GuildUserProfile, error) {
 	seq := s.c.nextSeq()
 	flags := binary.DynamicProtoMessage{}
 	for i := 3; i <= 29; i++ {
@@ -274,12 +291,17 @@ func (s *GuildService) GetGuildMemberProfileInfo(guildId, tinyId uint64) (*Guild
 	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
 		return nil, errors.Wrap(err, "decode packet error")
 	}
+	roles, err := s.fetchMemberRoles(guildId, tinyId)
+	if err != nil {
+		return nil, errors.Wrap(err, "fetch roles error")
+	}
 	// todo: 解析个性档案
 	return &GuildUserProfile{
 		TinyId:    tinyId,
 		Nickname:  body.Profile.GetNickname(),
 		AvatarUrl: body.Profile.GetAvatarUrl(),
 		JoinTime:  body.Profile.GetJoinTime(),
+		Roles:     roles,
 	}, nil
 }
 
@@ -306,42 +328,6 @@ func (s *GuildService) GetGuildRoles(guildId uint64) ([]*GuildRole, error) {
 			Owned:       role.GetOwned() == 1,
 			Disabled:    role.GetDisabled() == 1,
 			MaxNum:      role.GetMaxNum(),
-		})
-	}
-	return roles, nil
-}
-
-func (s *GuildService) GetUserRoles(guildId uint64, userId uint64) ([]*GuildRole, error) {
-	seq := s.c.nextSeq()
-	u1 := uint32(1)
-	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x1017_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
-		s.c.packOIDBPackageDynamically(4119, 1, binary.DynamicProtoMessage{
-			1: guildId,
-			2: userId,
-			4: binary.DynamicProtoMessage{
-				1: u1,
-				2: u1,
-				3: u1,
-			},
-		}))
-	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
-	if err != nil {
-		return nil, errors.Wrap(err, "send packet error")
-	}
-	body := new(channel.ChannelOidb0X1017Rsp)
-	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
-		return nil, errors.Wrap(err, "decode packet error")
-	}
-	p1 := body.GetP1()
-	if p1 == nil {
-		return nil, errors.New("packet OidbSvcTrpcTcp.0x1017_1: decode p1 error")
-	}
-	roles := make([]*GuildRole, 0, len(p1.GetRoles()))
-	for _, role := range p1.GetRoles() {
-		roles = append(roles, &GuildRole{
-			RoleId:    role.GetRoleId(),
-			RoleName:  role.GetName(),
-			ArgbColor: role.GetArgbColor(),
 		})
 	}
 	return roles, nil
@@ -640,6 +626,42 @@ func (s *GuildService) PostTopicChannelFeed(guildId, channelId uint64, feed *top
 		return nil
 	}
 	return errors.New("post feed error")
+}
+
+func (s *GuildService) fetchMemberRoles(guildId uint64, tinyId uint64) ([]*GuildRole, error) {
+	seq := s.c.nextSeq()
+	u1 := uint32(1)
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x1017_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key,
+		s.c.packOIDBPackageDynamically(4119, 1, binary.DynamicProtoMessage{
+			1: guildId,
+			2: tinyId,
+			4: binary.DynamicProtoMessage{
+				1: u1,
+				2: u1,
+				3: u1,
+			},
+		}))
+	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
+	if err != nil {
+		return nil, errors.Wrap(err, "send packet error")
+	}
+	body := new(channel.ChannelOidb0X1017Rsp)
+	if err = s.c.unpackOIDBPackage(rsp, body); err != nil {
+		return nil, errors.Wrap(err, "decode packet error")
+	}
+	p1 := body.GetP1()
+	if p1 == nil {
+		return nil, errors.New("packet OidbSvcTrpcTcp.0x1017_1: decode p1 error")
+	}
+	roles := make([]*GuildRole, 0, len(p1.GetRoles()))
+	for _, role := range p1.GetRoles() {
+		roles = append(roles, &GuildRole{
+			RoleId:    role.GetRoleId(),
+			RoleName:  role.GetName(),
+			ArgbColor: role.GetArgbColor(),
+		})
+	}
+	return roles, nil
 }
 
 /* need analysis

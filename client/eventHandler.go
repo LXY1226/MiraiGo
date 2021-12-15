@@ -14,6 +14,7 @@ type EventHandler struct {
 	SelfGroupMessageHandler             func(*QQClient, *message.GroupMessage)
 	GuildChannelMessageHandler          func(*QQClient, *message.GuildChannelMessage)
 	GuildMessageReactionsUpdatedHandler func(*QQClient, *GuildMessageReactionsUpdatedEvent)
+	GuildMessageRecalledHandler         func(*QQClient, *GuildMessageRecalledEvent)
 	GuildChannelUpdatedHandler          func(*QQClient, *GuildChannelUpdatedEvent)
 	GuildChannelCreatedHandler          func(*QQClient, *GuildChannelOperationEvent)
 	GuildChannelDestroyedHandles        func(*QQClient, *GuildChannelOperationEvent)
@@ -51,6 +52,7 @@ var nopHandlers = EventHandler{
 	SelfGroupMessageHandler:             func(*QQClient, *message.GroupMessage) {},
 	GuildChannelMessageHandler:          func(*QQClient, *message.GuildChannelMessage) {},
 	GuildMessageReactionsUpdatedHandler: func(*QQClient, *GuildMessageReactionsUpdatedEvent) {},
+	GuildMessageRecalledHandler:         func(*QQClient, *GuildMessageRecalledEvent) {},
 	GuildChannelUpdatedHandler:          func(*QQClient, *GuildChannelUpdatedEvent) {},
 	GuildChannelCreatedHandler:          func(*QQClient, *GuildChannelOperationEvent) {},
 	GuildChannelDestroyedHandles:        func(*QQClient, *GuildChannelOperationEvent) {},

@@ -1,10 +1,11 @@
 package jce
 
 type IJceStruct interface {
-	// ToBytes() []byte
+	ToBytes() []byte
 	ReadFrom(*JceReader)
 }
 
+//go:generate go run github.com/Mrs4s/MiraiGo/internal/generator/jce_gen -file=structs.go -o structs_tobytes.go
 type (
 	RequestPacket struct {
 		IVersion     int16             `jceId:"1"`
@@ -74,7 +75,6 @@ type (
 	}
 
 	SvcReqRegister struct {
-		IJceStruct
 		Uin                int64  `jceId:"0"`
 		Bid                int64  `jceId:"1"`
 		ConnType           byte   `jceId:"2"`
@@ -139,7 +139,6 @@ type (
 	}
 
 	SvcReqRegisterNew struct {
-		IJceStruct
 		RequestOptional   int64      `jceId:"0"`
 		C2CMsg            IJceStruct `jceId:"1"` // SvcReqGetMsgV2
 		GroupMsg          IJceStruct `jceId:"2"` // SvcReqPullGroupMsgSeq
@@ -173,7 +172,6 @@ type (
 	}
 
 	PullGroupSeqParam struct {
-		IJceStruct
 		GroupCode int64 `jceId:"0"`
 		LastSeqId int64 `jceId:"1"`
 	}
@@ -251,7 +249,6 @@ type (
 	}
 
 	SvcRespPushMsg struct {
-		IJceStruct
 		Uin         int64        `jceId:"0"`
 		DelInfos    []IJceStruct `jceId:"1"`
 		Svrip       int32        `jceId:"2"`
@@ -299,7 +296,6 @@ type (
 	}
 
 	FriendListRequest struct {
-		IJceStruct
 		Reqtype         int32   `jceId:"0"`
 		IfReflush       byte    `jceId:"1"`
 		Uin             int64   `jceId:"2"`
@@ -381,7 +377,6 @@ type (
 	}
 
 	TroopListRequest struct {
-		IJceStruct
 		Uin              int64   `jceId:"0"`
 		GetMSFMsgFlag    byte    `jceId:"1"`
 		Cookies          []byte  `jceId:"2"`
@@ -432,7 +427,6 @@ type (
 	}
 
 	TroopMemberListRequest struct {
-		IJceStruct
 		Uin                int64 `jceId:"0"`
 		GroupCode          int64 `jceId:"1"`
 		NextUin            int64 `jceId:"2"`
@@ -482,7 +476,6 @@ type (
 	}
 
 	ModifyGroupCardRequest struct {
-		IJceStruct
 		Zero      int64        `jceId:"0"`
 		GroupCode int64        `jceId:"1"`
 		NewSeq    int64        `jceId:"2"`
@@ -501,7 +494,6 @@ type (
 	}
 
 	SummaryCardReq struct {
-		IJceStruct
 		Uin                int64 `jceId:"0"`
 		ComeFrom           int32 `jceId:"1"`
 		QzoneFeedTimestamp int64 `jceId:"2"`
@@ -523,7 +515,6 @@ type (
 	}
 
 	SummaryCardReqSearch struct {
-		IJceStruct
 		Keyword     string   `jceId:"0"`
 		CountryCode string   `jceId:"1"`
 		Version     int32    `jceId:"2"`
@@ -531,19 +522,12 @@ type (
 	}
 
 	DelFriendReq struct {
-		IJceStruct
 		Uin     int64 `jceId:"0"`
 		DelUin  int64 `jceId:"1"`
 		DelType byte  `jceId:"2"`
 		Version int32 `jceId:"3"`
 	}
 )
-
-func (pkt *RequestPacket) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
 
 func (pkt *RequestPacket) ReadFrom(r *JceReader) {
 	pkt.IVersion = r.ReadInt16(1)
@@ -560,20 +544,8 @@ func (pkt *RequestPacket) ReadFrom(r *JceReader) {
 	pkt.Status = r.ReadMapStrStr(10)
 }
 
-func (pkt *RequestDataVersion3) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
 func (pkt *RequestDataVersion3) ReadFrom(r *JceReader) {
 	pkt.Map = r.ReadMapStrByte(0)
-}
-
-func (pkt *RequestDataVersion2) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
 }
 
 func (pkt *RequestDataVersion2) ReadFrom(r *JceReader) {
@@ -625,12 +597,6 @@ func (pkt *BigDataIPInfo) ReadFrom(r *JceReader) {
 	pkt.Port = r.ReadInt64(2)
 }
 
-func (pkt *SvcReqRegister) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
 func (pkt *SvcRespRegister) ReadFrom(r *JceReader) {
 	pkt.Uin = r.ReadInt64(0)
 	pkt.Bid = r.ReadInt64(1)
@@ -652,24 +618,6 @@ func (pkt *SvcRespRegister) ReadFrom(r *JceReader) {
 	pkt.ExtOnlineStatus = r.ReadInt64(17)
 }
 
-func (pkt *FriendListRequest) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
-func (pkt *SummaryCardReq) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
-func (pkt *SummaryCardReqSearch) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
 func (pkt *FriendInfo) ReadFrom(r *JceReader) {
 	pkt.FriendUin = r.ReadInt64(0)
 	pkt.GroupId = r.ReadByte(1)
@@ -683,12 +631,6 @@ func (pkt *FriendInfo) ReadFrom(r *JceReader) {
 	pkt.CardID = r.ReadBytes(41)
 }
 
-func (pkt *TroopListRequest) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
 func (pkt *TroopNumber) ReadFrom(r *JceReader) {
 	pkt.GroupUin = r.ReadInt64(0)
 	pkt.GroupCode = r.ReadInt64(1)
@@ -697,12 +639,6 @@ func (pkt *TroopNumber) ReadFrom(r *JceReader) {
 	pkt.MemberNum = r.ReadInt64(19)
 	pkt.GroupOwnerUin = r.ReadInt64(23)
 	pkt.MaxGroupMemberNum = r.ReadInt64(29)
-}
-
-func (pkt *TroopMemberListRequest) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
 }
 
 func (pkt *TroopMemberInfo) ReadFrom(r *JceReader) {
@@ -799,34 +735,4 @@ func (pkt *InstanceInfo) ReadFrom(r *JceReader) {
 	pkt.Platform = r.ReadInt64(2)
 	pkt.ProductType = r.ReadInt64(3)
 	pkt.ClientType = r.ReadInt64(4)
-}
-
-func (pkt *SvcRespPushMsg) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
-func (pkt *ModifyGroupCardRequest) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
-func (pkt *SvcReqGetDevLoginInfo) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
-func (pkt *SvcReqRegisterNew) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
-}
-
-func (pkt *DelFriendReq) ToBytes() []byte {
-	w := NewJceWriter()
-	w.WriteJceStructRaw(pkt)
-	return w.Bytes()
 }
