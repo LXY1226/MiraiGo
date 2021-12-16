@@ -180,6 +180,7 @@ type (
 	LogEvent struct {
 		Type    string
 		Message string
+		Dump    []byte
 	}
 
 	ServerUpdatedEvent struct {
@@ -293,20 +294,6 @@ type (
 	groupMemberListResponse struct {
 		NextUin int64
 		list    []*GroupMemberInfo
-	}
-
-	pttUploadResponse struct {
-		ResultCode int32
-		Message    string
-
-		IsExists bool
-
-		ResourceId string
-		UploadKey  []byte
-		UploadIp   []string
-		UploadPort []uint32
-		FileKey    []byte
-		FileId     int64
 	}
 
 	bigDataSessionInfo struct {
