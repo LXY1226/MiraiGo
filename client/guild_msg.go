@@ -22,20 +22,18 @@ import (
 	"github.com/Mrs4s/MiraiGo/utils"
 )
 
-type (
-	guildImageUploadResponse struct {
-		UploadKey     []byte
-		UploadIp      []uint32
-		UploadPort    []uint32
-		Width         int32
-		Height        int32
-		Message       string
-		DownloadIndex string
-		FileId        int64
-		ResultCode    int32
-		IsExists      bool
-	}
-)
+type guildImageUploadResponse struct {
+	UploadKey     []byte
+	UploadIp      []uint32
+	UploadPort    []uint32
+	Width         int32
+	Height        int32
+	Message       string
+	DownloadIndex string
+	FileId        int64
+	ResultCode    int32
+	IsExists      bool
+}
 
 func init() {
 	decoders["ImgStore.QQMeetPicUp"] = decodeGuildImageStoreResponse
@@ -43,9 +41,13 @@ func init() {
 
 func (s *GuildService) SendGuildChannelMessage(guildId, channelId uint64, m *message.SendingMessage) (*message.GuildChannelMessage, error) {
 	mr := rand.Uint32() // 客户端似乎是生成的 u32 虽然类型是u64
-	at := m.FirstOrNil(func(e message.IMessageElement) bool { return e.Type() == message.At })
-	if at != nil {
-		at.(*message.AtElement).Guild = true
+	for _, elem := range m.Elements {
+		if elem.Type() == message.At {
+			at := elem.(*message.AtElement)
+			if at.SubType == message.AtTypeGroupMember {
+				at.SubType = message.AtTypeGuildMember
+			}
+		}
 	}
 	req := &channel.DF62ReqBody{Msg: &channel.ChannelMsgContent{
 		Head: &channel.ChannelMsgHead{
@@ -201,20 +203,18 @@ func (s *GuildService) pullChannelMessages(guildId, channelId, beginSeq, endSeq,
 		param.Version = []uint64{eventVersion}
 	}
 
+	withVersionFlag := uint32(0)
+	if eventVersion != 0 {
+		withVersionFlag = 1
+	}
+	directFlag := uint32(0)
+	if direct {
+		directFlag = 1
+	}
 	payload, _ := proto.Marshal(&channel.ChannelMsgReq{
-		ChannelParam: param,
-		WithVersionFlag: proto.Uint32(func() uint32 {
-			if eventVersion != 0 {
-				return 1
-			}
-			return 0
-		}()),
-		DirectMessageFlag: proto.Uint32(func() uint32 {
-			if direct {
-				return 1
-			}
-			return 0
-		}()),
+		ChannelParam:      param,
+		WithVersionFlag:   &withVersionFlag,
+		DirectMessageFlag: &directFlag,
 	})
 	seq := s.c.nextSeq()
 	packet := packets.BuildUniPacket(s.c.Uin, seq, "trpc.group_pro.synclogic.SyncLogic.GetChannelMsg", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, payload)

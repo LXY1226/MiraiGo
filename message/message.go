@@ -298,20 +298,17 @@ func ToProtoElems(elems []IMessageElement, generalFlags bool) (r []*msg.Elem) {
 	return
 }
 
-func ToSrcProtoElems(elems []IMessageElement) (r []*msg.Elem) {
-	for _, elem := range elems {
-		switch elem.Type() {
-		case Image:
-			r = append(r, &msg.Elem{
-				Text: &msg.Text{
-					Str: proto.String("[图片]"),
-				},
-			})
-		default:
-			r = append(r, ToProtoElems([]IMessageElement{elem}, false)...)
+var photoTextElem IMessageElement = NewText("[图片]")
+
+func ToSrcProtoElems(elems []IMessageElement) []*msg.Elem {
+	elems2 := make([]IMessageElement, len(elems))
+	copy(elems2, elems)
+	for i, elem := range elems2 {
+		if elem.Type() == Image {
+			elems2[i] = photoTextElem
 		}
 	}
-	return
+	return ToProtoElems(elems2, false)
 }
 
 func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
@@ -379,13 +376,21 @@ func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
 				att6 := binary.NewReader(elem.Text.Attr6Buf)
 				att6.ReadBytes(7)
 				target := int64(uint32(att6.ReadInt32()))
-				res = append(res, NewAt(target, elem.Text.GetStr()))
+				at := NewAt(target, elem.Text.GetStr())
+				at.SubType = AtTypeGroupMember
+				res = append(res, at)
 			case len(elem.Text.PbReserve) > 0:
 				resv := new(msg.TextResvAttr)
 				_ = proto.Unmarshal(elem.Text.PbReserve, resv)
 				if resv.GetAtType() == 2 {
 					at := NewAt(int64(resv.GetAtMemberTinyid()), elem.Text.GetStr())
-					at.Guild = true
+					at.SubType = AtTypeGuildMember
+					res = append(res, at)
+					break
+				}
+				if resv.GetAtType() == 4 {
+					at := NewAt(int64(resv.AtChannelInfo.GetChannelId()), elem.Text.GetStr())
+					at.SubType = AtTypeGuildChannel
 					res = append(res, at)
 					break
 				}
@@ -423,11 +428,9 @@ func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
 				if isOk := strings.Contains(content, "<?xml"); isOk {
 					res = append(res, NewRichXml(content, int64(elem.RichMsg.GetServiceId())))
 					continue
-				} else {
-					if json.Valid(utils.S2B(content)) {
-						res = append(res, NewRichJson(content))
-						continue
-					}
+				} else if json.Valid(utils.S2B(content)) {
+					res = append(res, NewRichJson(content))
+					continue
 				}
 				res = append(res, NewText(content))
 			}
@@ -436,12 +439,12 @@ func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
 			if len(elem.CustomFace.Md5) == 0 {
 				continue
 			}
-			url := func() string {
-				if elem.CustomFace.GetOrigUrl() == "" {
-					return "https://gchat.qpic.cn/gchatpic_new/0/0-0-" + strings.ReplaceAll(binary.CalculateImageResourceId(elem.CustomFace.Md5)[1:37], "-", "") + "/0?term=2"
-				}
-				return "https://gchat.qpic.cn" + elem.CustomFace.GetOrigUrl()
-			}()
+			var url string
+			if elem.CustomFace.GetOrigUrl() == "" {
+				url = "https://gchat.qpic.cn/gchatpic_new/0/0-0-" + strings.ReplaceAll(binary.CalculateImageResourceId(elem.CustomFace.Md5)[1:37], "-", "") + "/0?term=2"
+			} else {
+				url = "https://gchat.qpic.cn" + elem.CustomFace.GetOrigUrl()
+			}
 			if strings.Contains(elem.CustomFace.GetOrigUrl(), "qmeet") {
 				res = append(res, &GuildImageElement{
 					FileId:   int64(elem.CustomFace.GetFileId()),

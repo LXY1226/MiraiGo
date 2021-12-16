@@ -20,7 +20,6 @@ import (
 	"github.com/Mrs4s/MiraiGo/client/pb/msg"
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
 	"github.com/Mrs4s/MiraiGo/client/pb/profilecard"
-	"github.com/Mrs4s/MiraiGo/client/pb/qweb"
 	"github.com/Mrs4s/MiraiGo/client/pb/structmsg"
 	"github.com/Mrs4s/MiraiGo/internal/proto"
 	"github.com/Mrs4s/MiraiGo/utils"
@@ -787,6 +786,18 @@ func decodeWordSegmentation(_ *QQClient, _ *incomingPacketInfo, payload []byte) 
 	return nil, errors.New("no word received")
 }
 
+func decodeSidExpiredPacket(c *QQClient, _ *incomingPacketInfo, _ []byte) (interface{}, error) {
+	_, err := c.sendAndWait(c.buildRequestChangeSigPacket(3554528))
+	if err != nil {
+		return nil, errors.Wrap(err, "resign client error")
+	}
+	if err = c.registerClient(); err != nil {
+		return nil, errors.Wrap(err, "register error")
+	}
+	return nil, nil
+}
+
+/* unused
 // LightAppSvc.mini_app_info.GetAppInfoById
 func decodeAppInfoResponse(_ *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
 	pkg := qweb.QWebRsp{}
@@ -802,6 +813,7 @@ func decodeAppInfoResponse(_ *QQClient, _ *incomingPacketInfo, payload []byte) (
 	}
 	return rsp.AppInfo, nil
 }
+*/
 
 func ignoreDecoder(_ *QQClient, _ *incomingPacketInfo, _ []byte) (interface{}, error) {
 	return nil, nil
