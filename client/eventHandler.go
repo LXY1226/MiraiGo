@@ -1,8 +1,6 @@
 package client
 
 import (
-	"sync/atomic"
-
 	"github.com/Mrs4s/MiraiGo/message"
 )
 
@@ -34,6 +32,7 @@ type EventHandler struct {
 	FriendRequestHandler                func(*QQClient, *NewFriendRequest)
 	NewFriendHandler                    func(*QQClient, *NewFriendEvent)
 	DisconnectHandler                   func(*QQClient, *ClientDisconnectedEvent)
+	OfflineHandler                      func(*QQClient, *ClientOfflineEvent)
 	LogHandler                          func(*QQClient, *LogEvent)
 	ServerUpdatedHandler                func(*QQClient, *ServerUpdatedEvent) bool
 	GroupNotifyHandler                  func(*QQClient, INotifyEvent)
@@ -42,6 +41,7 @@ type EventHandler struct {
 	OfflineFileHandler                  func(*QQClient, *OfflineFileEvent)
 	OtherClientStatusChangedHandler     func(*QQClient, *OtherClientStatusChangedEvent)
 	GroupDigestHandler                  func(*QQClient, *GroupDigestEvent)
+	TokenUpdatedHandler                 func(*QQClient)
 }
 
 var nopHandlers = EventHandler{
@@ -72,6 +72,7 @@ var nopHandlers = EventHandler{
 	FriendRequestHandler:                func(*QQClient, *NewFriendRequest) {},
 	NewFriendHandler:                    func(*QQClient, *NewFriendEvent) {},
 	DisconnectHandler:                   func(*QQClient, *ClientDisconnectedEvent) {},
+	OfflineHandler:                      func(*QQClient, *ClientOfflineEvent) {},
 	LogHandler:                          func(*QQClient, *LogEvent) {},
 	ServerUpdatedHandler:                func(*QQClient, *ServerUpdatedEvent) bool { return true },
 	GroupNotifyHandler:                  func(*QQClient, INotifyEvent) {},
@@ -80,6 +81,7 @@ var nopHandlers = EventHandler{
 	OfflineFileHandler:                  func(*QQClient, *OfflineFileEvent) {},
 	OtherClientStatusChangedHandler:     func(*QQClient, *OtherClientStatusChangedEvent) {},
 	GroupDigestHandler:                  func(*QQClient, *GroupDigestEvent) {},
+	TokenUpdatedHandler:                 func(*QQClient) {},
 }
 
 /* TODO Draft Logger
@@ -153,7 +155,7 @@ func (c *QQClient) onGroupMessageReceipt(id string, f ...func(*QQClient, *groupM
 		c.groupMessageReceiptHandler.Delete(id)
 		return
 	}
-	atomic.AddUint64(&c.stat.MessageSent, 1)
+	c.stat.MessageSent.Add(1)
 	c.groupMessageReceiptHandler.LoadOrStore(id, f[0])
 }
 

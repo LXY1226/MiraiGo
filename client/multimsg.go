@@ -2,6 +2,8 @@ package client
 
 import (
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -9,8 +11,8 @@ import (
 	"github.com/Mrs4s/MiraiGo/client/pb/longmsg"
 	"github.com/Mrs4s/MiraiGo/client/pb/msg"
 	"github.com/Mrs4s/MiraiGo/client/pb/multimsg"
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/Mrs4s/MiraiGo/internal/proto"
+	"github.com/Mrs4s/MiraiGo/message"
 	"github.com/Mrs4s/MiraiGo/utils"
 )
 
@@ -21,7 +23,6 @@ func init() {
 
 // MultiMsg.ApplyUp
 func (c *QQClient) buildMultiApplyUpPacket(data, hash []byte, buType int32, groupUin int64) (uint16, []byte) {
-	seq := c.nextSeq()
 	req := &multimsg.MultiReqBody{
 		Subcmd:       1,
 		TermType:     5,
@@ -39,8 +40,7 @@ func (c *QQClient) buildMultiApplyUpPacket(data, hash []byte, buType int32, grou
 		BuType: buType,
 	}
 	payload, _ := proto.Marshal(req)
-	packet := packets.BuildUniPacket(c.Uin, seq, "MultiMsg.ApplyUp", 1, c.OutGoingPacketSessionId, EmptyBytes, c.sigInfo.d2Key, payload)
-	return seq, packet
+	return c.uniPacket("MultiMsg.ApplyUp", payload)
 }
 
 // MultiMsg.ApplyUp
@@ -64,7 +64,6 @@ func decodeMultiApplyUpResponse(_ *QQClient, _ *incomingPacketInfo, payload []by
 
 // MultiMsg.ApplyDown
 func (c *QQClient) buildMultiApplyDownPacket(resID string) (uint16, []byte) {
-	seq := c.nextSeq()
 	req := &multimsg.MultiReqBody{
 		Subcmd:       2,
 		TermType:     5,
@@ -81,8 +80,7 @@ func (c *QQClient) buildMultiApplyDownPacket(resID string) (uint16, []byte) {
 		ReqChannelType: 2,
 	}
 	payload, _ := proto.Marshal(req)
-	packet := packets.BuildUniPacket(c.Uin, seq, "MultiMsg.ApplyDown", 1, c.OutGoingPacketSessionId, EmptyBytes, c.sigInfo.d2Key, payload)
-	return seq, packet
+	return c.uniPacket("MultiMsg.ApplyDown", payload)
 }
 
 // MultiMsg.ApplyDown
@@ -131,4 +129,85 @@ func decodeMultiApplyDownResponse(_ *QQClient, _ *incomingPacketInfo, payload []
 		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
 	}
 	return &mt, nil
+}
+
+type forwardMsgLinker struct {
+	items map[string]*msg.PbMultiMsgItem
+}
+
+func (l *forwardMsgLinker) link(name string) *message.ForwardMessage {
+	item := l.items[name]
+	if item == nil {
+		return nil
+	}
+	nodes := make([]*message.ForwardNode, 0, len(item.GetBuffer().GetMsg()))
+	for _, m := range item.GetBuffer().GetMsg() {
+		name := m.Head.GetFromNick()
+		if m.Head.GetMsgType() == 82 && m.Head.GroupInfo != nil {
+			name = m.Head.GroupInfo.GetGroupCard()
+		}
+
+		msgElems := message.ParseMessageElems(m.Body.RichText.Elems)
+		for i, elem := range msgElems {
+			if forward, ok := elem.(*message.ForwardElement); ok {
+				if forward.FileName != "" {
+					msgElems[i] = l.link(forward.FileName) // 递归处理嵌套转发
+				}
+			}
+		}
+
+		nodes = append(nodes, &message.ForwardNode{
+			SenderId:   m.Head.GetFromUin(),
+			SenderName: name,
+			Time:       m.Head.GetMsgTime(),
+			Message:    msgElems,
+		})
+	}
+	return &message.ForwardMessage{Nodes: nodes}
+}
+
+func (c *QQClient) GetForwardMessage(resID string) *message.ForwardMessage {
+	m := c.DownloadForwardMessage(resID)
+	if m == nil {
+		return nil
+	}
+	linker := forwardMsgLinker{
+		items: make(map[string]*msg.PbMultiMsgItem),
+	}
+	for _, item := range m.Items {
+		linker.items[item.GetFileName()] = item
+	}
+	return linker.link(m.FileName)
+}
+
+func (c *QQClient) DownloadForwardMessage(resId string) *message.ForwardElement {
+	i, err := c.sendAndWait(c.buildMultiApplyDownPacket(resId))
+	if err != nil {
+		return nil
+	}
+	multiMsg := i.(*msg.PbMultiMsgTransmit)
+	if multiMsg.GetPbItemList() == nil {
+		return nil
+	}
+	var pv string
+	for i := 0; i < int(math.Min(4, float64(len(multiMsg.GetMsg())))); i++ {
+		m := multiMsg.Msg[i]
+		pv += fmt.Sprintf(`<title size="26" color="#777777">%s: %s</title>`,
+			func() string {
+				if m.Head.GetMsgType() == 82 && m.Head.GroupInfo != nil {
+					return m.Head.GroupInfo.GetGroupCard()
+				}
+				return m.Head.GetFromNick()
+			}(),
+			message.ToReadableString(
+				message.ParseMessageElems(multiMsg.Msg[i].GetBody().GetRichText().Elems),
+			),
+		)
+	}
+	return genForwardTemplate(
+		resId, pv, "群聊的聊天记录", "[聊天记录]", "聊天记录",
+		fmt.Sprintf("查看 %d 条转发消息", len(multiMsg.GetMsg())),
+		time.Now().UnixNano(),
+		multiMsg.GetPbItemList(),
+	)
 }

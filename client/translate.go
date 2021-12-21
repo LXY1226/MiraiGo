@@ -4,12 +4,10 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/Mrs4s/MiraiGo/internal/proto"
 )
 
 func (c *QQClient) buildTranslatePacket(src, dst, text string) (uint16, []byte) {
-	seq := c.nextSeq()
 	body := &oidb.TranslateReqBody{
 		BatchTranslateReq: &oidb.BatchTranslateReq{
 			SrcLanguage: src,
@@ -24,8 +22,7 @@ func (c *QQClient) buildTranslatePacket(src, dst, text string) (uint16, []byte) 
 		Bodybuffer:  b,
 	}
 	payload, _ := proto.Marshal(req)
-	packet := packets.BuildUniPacket(c.Uin, seq, "OidbSvc.0x990", 1, c.OutGoingPacketSessionId, EmptyBytes, c.sigInfo.d2Key, payload)
-	return seq, packet
+	return c.uniPacket("OidbSvc.0x990", payload)
 }
 
 func (c *QQClient) Translate(src, dst, text string) (string, error) {

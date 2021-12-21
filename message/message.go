@@ -3,7 +3,6 @@ package message
 import (
 	"encoding/json"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -415,10 +414,9 @@ func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
 			}
 			if content != "" {
 				if elem.RichMsg.GetServiceId() == 35 {
-					reg := regexp.MustCompile(`m_resid="(.*?)"`)
-					sub := reg.FindAllStringSubmatch(content, -1)
-					if len(sub) > 0 && len(sub[0]) > 1 {
-						res = append(res, &ForwardElement{ResId: reg.FindAllStringSubmatch(content, -1)[0][1]})
+					elem := forwardMsgFromXML(content)
+					if elem != nil {
+						res = append(res, elem)
 						continue
 					}
 				}
@@ -488,7 +486,7 @@ func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
 				EncryptKey: elem.MarketFace.GetKey(),
 				MagicValue: utils.B2S(elem.MarketFace.Mobileparam),
 			}
-			if face.Name == "[骰子]" {
+			if face.Name == "[骰子]" || face.Name == "[随机骰子]" {
 				return []IMessageElement{
 					&DiceElement{
 						MarketFaceElement: face,
@@ -497,6 +495,17 @@ func ParseMessageElems(elems []*msg.Elem) []IMessageElement {
 							t, _ := strconv.ParseInt(v, 10, 32)
 							return int32(t) + 1
 						}(),
+					},
+				}
+			}
+			if face.Name == "[猜拳]" {
+				v := strings.SplitN(face.MagicValue, "=", 2)[1]
+				t, _ := strconv.ParseInt(v, 10, 32)
+				return []IMessageElement{
+					&FingerGuessingElement{
+						MarketFaceElement: face,
+						Value:             int32(t),
+						Name:              fingerGuessingName[int32(t)],
 					},
 				}
 			}

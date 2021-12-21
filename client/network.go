@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -38,7 +39,7 @@ type ConnectionQualityInfo struct {
 var ErrNotConnected = errors.New("no active connection")
 
 func (c *QQClient) ConnectionQualityTest() *ConnectionQualityInfo {
-	if !c.Online {
+	if !c.Online.Load() {
 		return nil
 	}
 	r := &ConnectionQualityInfo{}
@@ -93,8 +94,8 @@ func (c *QQClient) getConn() *net.TCPConn {
 	return (*net.TCPConn)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn))))
 }
 
-func (c *QQClient) setConn(conn *net.TCPConn) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(conn))
+func (c *QQClient) setConn(conn *net.TCPConn) (swapped bool) {
+	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(nil), unsafe.Pointer(conn))
 }
 
 func (c *QQClient) closeConn() *net.TCPConn {
@@ -119,11 +120,11 @@ func (c *QQClient) connectFastest() error {
 				return
 			}
 			//addrs = append(addrs, remote)
-			if c.getConn() != nil {
+			if !c.setConn(conn) {
 				_ = conn.Close()
 				return
+
 			}
-			c.setConn(conn)
 			ch <- nil
 		}(remote)
 	}
@@ -172,34 +173,40 @@ func (c *QQClient) connect() error {
 	return nil*/
 }
 
+func (c *QQClient) QuickReconnect() {
+	c.quickReconnect("用户请求快速重连")
+}
+
 // quickReconnect 快速重连
-func (c *QQClient) quickReconnect() {
+func (c *QQClient) quickReconnect(message string) {
 	c.Disconnect()
+	go c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: message})
 	time.Sleep(time.Millisecond * 200)
 	if err := c.connect(); err != nil {
 		c.Error("connect server error: %v", err)
-		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "quick reconnect failed"})
+		c.EventHandler.OfflineHandler(c, &ClientOfflineEvent{Message: "快速重连失败"})
 		return
 	}
 	if err := c.registerClient(); err != nil {
 		c.Error("register client failed: %v", err)
 		c.Disconnect()
-		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "register error"})
+		c.EventHandler.OfflineHandler(c, &ClientOfflineEvent{Message: "register error"})
 		return
 	}
 }
 
 // Disconnect 中断连接
 func (c *QQClient) Disconnect() {
+	c.Online.Store(false)
 	if conn := c.closeConn(); conn != nil {
 		_ = conn.Close()
 	}
-	c.Online = false
 }
 
 // sendAndWait 向服务器发送一个数据包, 并等待返回
 func (c *QQClient) sendAndWait(seq uint16, pkt []byte, params ...requestParams) (interface{}, error) {
-	c.Debug("send seq:%v", seq)
+	_, file, line, _ := runtime.Caller(1)
+	c.Debug("send seq:%v from %s:%d", seq, file, line)
 	// 整个sendAndWait使用同一个connection防止串线
 	conn := c.getConn()
 
@@ -221,7 +228,7 @@ func (c *QQClient) sendAndWait(seq uint16, pkt []byte, params ...requestParams) 
 		}
 	}, params: p, dynamic: false})
 
-	for retry := 0; retry < 3; retry++ {
+	for retry := 0; retry < 2; retry++ {
 		err := c.sendPacketWithConn(conn, pkt)
 		if err != nil {
 			c.handlers.Delete(seq)
@@ -243,6 +250,10 @@ func (c *QQClient) sendPacket(pkt []byte) error {
 }
 
 func (c *QQClient) sendPacketWithConn(conn *net.TCPConn, pkt []byte) error {
+	if conn != c.getConn() {
+		conn.Close()
+		return errors.New("broken connection")
+	}
 	if conn == nil {
 		return ErrNotConnected
 	}
@@ -251,10 +262,10 @@ func (c *QQClient) sendPacketWithConn(conn *net.TCPConn, pkt []byte) error {
 		err = io.ErrShortWrite
 	}
 	if err != nil {
-		atomic.AddUint64(&c.stat.PacketLost, 1)
+		c.stat.PacketLost.Add(1)
 		return errors.Wrap(err, "Packet failed to sendPacket")
 	}
-	atomic.AddUint64(&c.stat.PacketSent, 1)
+	c.stat.PacketSent.Add(1)
 	return nil
 
 }
@@ -310,15 +321,15 @@ func (c *QQClient) sendAndWaitDynamic(seq uint16, pkt []byte) ([]byte, error) {
 // plannedDisconnect 计划中断线事件
 //func (c *QQClient) plannedDisconnect(_ *utils.TCPDialer) {
 //	c.Debug("planned disconnect.")
-//	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
-//	c.Online = false
+//	c.stat.DisconnectTimes.Add(1)
+//	c.Online.Store(false)
 //}
 
 // unexpectedDisconnect 非预期断线事件
 func (c *QQClient) unexpectedDisconnect(e error) {
 	c.Error("unexpected disconnect: %v", e)
-	atomic.AddUint32(&c.stat.DisconnectTimes, 1)
-	c.Online = false
+	c.stat.DisconnectTimes.Add(1)
+	c.Online.Store(false)
 	if err := c.connect(); err != nil {
 		c.Error("connect server error: %v", err)
 		c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "connection dropped by server."})
@@ -347,8 +358,16 @@ func readPacket(conn *net.TCPConn, minSize, maxSize uint32) ([]byte, error) {
 	return buf, err
 }
 
+//func (c *QQClient) procPacket()
+
 // netLoop 通过循环来不停接收数据包
 func (c *QQClient) netLoop(conn *net.TCPConn) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.Error("netLoop %v", r)
+		}
+		_ = conn.Close()
+	}()
 	errCount := 0
 	for {
 		data, err := readPacket(conn, 4, 10<<20) // max 10MB
@@ -357,35 +376,35 @@ func (c *QQClient) netLoop(conn *net.TCPConn) {
 			if c.getConn() == conn {
 				c.unexpectedDisconnect(err)
 			}
-			break
+			return
 		}
-		pkt, err := packets.ParseIncomingPacket(data, c.sigInfo.d2Key)
+		pkt, err := packets.ParseIncomingPacket(data, c.sigInfo.D2Key)
 		if err != nil {
-			c.Error("parse incoming packet error: %v", err)
 			if errors.Is(err, packets.ErrSessionExpired) || errors.Is(err, packets.ErrPacketDropped) {
 				c.Disconnect()
 				go c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "session expired"})
-				break
+				return // 销毁连接
 			}
+			c.Error("parse incoming packet error: %v", err)
 			errCount++
 			if errCount > 2 {
-				go c.quickReconnect()
+				c.quickReconnect("链接错误率过高")
 			}
-			break
+			continue
 		}
 		if pkt.Flag2 == 2 {
-			pkt.Payload, err = pkt.DecryptPayload(c.ecdh.InitialShareKey, c.RandomKey, c.sigInfo.wtSessionTicketKey)
+			pkt.Payload, err = pkt.DecryptPayload(c.ecdh.InitialShareKey, c.RandomKey, c.sigInfo.WtSessionTicketKey)
 			if err != nil {
 				c.Error("decrypt payload error: %v", err)
 				if errors.Is(err, packets.ErrUnknownFlag) {
-					go c.quickReconnect()
+					c.quickReconnect("服务器发送未知响应")
 				}
 				continue
 			}
 		}
 		errCount = 0
 		c.Debug("rev cmd: %v seq: %v", pkt.CommandName, pkt.SequenceId)
-		atomic.AddUint64(&c.stat.PacketReceived, 1)
+		c.stat.PacketReceived.Add(1) // 不再需要atomic
 		go func(pkt *packets.IncomingPacket) {
 			defer func() {
 				if pan := recover(); pan != nil {
@@ -422,5 +441,4 @@ func (c *QQClient) netLoop(conn *net.TCPConn) {
 			}
 		}(pkt)
 	}
-	_ = conn.Close()
 }

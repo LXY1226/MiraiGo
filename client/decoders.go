@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/pkg/errors"
 
 	"github.com/Mrs4s/MiraiGo/binary"
@@ -45,9 +44,9 @@ func decodeLoginResponse(c *QQClient, _ *incomingPacketInfo, payload []byte) (in
 		c.g = h[:]
 	}
 	if t == 0 { // login success
-		if t150, ok := m[0x150]; ok {
-			c.t150 = t150
-		}
+		// if t150, ok := m[0x150]; ok {
+		// 	 c.t150 = t150
+		// }
 		if t161, ok := m[0x161]; ok {
 			c.decodeT161(t161)
 		}
@@ -55,6 +54,7 @@ func decodeLoginResponse(c *QQClient, _ *incomingPacketInfo, payload []byte) (in
 			c.randSeed = m[0x403]
 		}
 		c.decodeT119(m[0x119], c.deviceInfo.TgtgtKey)
+		c.EventHandler.TokenUpdatedHandler(c)
 		return LoginResponse{
 			Success: true,
 		}, nil
@@ -210,8 +210,9 @@ func decodeExchangeEmpResponse(c *QQClient, _ *incomingPacketInfo, payload []byt
 		c.decodeT119R(m[0x119])
 	}
 	if cmd == 11 {
-		h := md5.Sum(c.sigInfo.d2Key)
+		h := md5.Sum(c.sigInfo.D2Key)
 		c.decodeT119(m[0x119], h[:])
+		c.EventHandler.TokenUpdatedHandler(c)
 	}
 	return nil, nil
 }
@@ -282,6 +283,7 @@ func decodeTransEmpResponse(c *QQClient, _ *incomingPacketInfo, payload []byte) 
 			return nil, errors.Errorf("wtlogin.trans_emp sub cmd 0x12 error: %v", code)
 		}
 		c.Uin = body.ReadInt64()
+		c.highwaySession.Uin = strconv.FormatInt(c.Uin, 10)
 		body.ReadInt32() // sig create time
 		body.ReadUInt16()
 		m := body.ReadTlvMap(2)
@@ -758,7 +760,7 @@ func decodeForceOfflinePacket(c *QQClient, _ *incomingPacketInfo, payload []byte
 	r := jce.NewJceReader(data.Map["req_PushForceOffline"]["PushNotifyPack.RequestPushForceOffline"][1:])
 	tips := r.ReadString(2)
 	c.Disconnect()
-	go c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: tips})
+	go c.EventHandler.OfflineHandler(c, &ClientOfflineEvent{Message: tips})
 	return nil, nil
 }
 
@@ -767,7 +769,7 @@ func decodeMSFOfflinePacket(c *QQClient, _ *incomingPacketInfo, _ []byte) (inter
 	// c.lastLostMsg = "服务器端强制下线."
 	c.Disconnect()
 	// 这个decoder不能消耗太多时间, event另起线程处理
-	go c.EventHandler.DisconnectHandler(c, &ClientDisconnectedEvent{Message: "服务端强制下线."})
+	go c.EventHandler.OfflineHandler(c, &ClientOfflineEvent{Message: "服务端强制下线."})
 	return nil, nil
 }
 
@@ -795,7 +797,7 @@ func decodeSidExpiredPacket(c *QQClient, i *incomingPacketInfo, _ []byte) (inter
 	if err = c.registerClient(); err != nil {
 		return nil, errors.Wrap(err, "register error")
 	}
-	_ = c.sendPacket(packets.BuildUniPacket(c.Uin, i.SequenceId, "OnlinePush.SidTicketExpired", 1, c.OutGoingPacketSessionId, []byte{}, c.sigInfo.d2Key, EmptyBytes))
+	_ = c.sendPacket(c.uniPacketWithSeq(i.SequenceId, "OnlinePush.SidTicketExpired", EmptyBytes))
 	return nil, nil
 }
 

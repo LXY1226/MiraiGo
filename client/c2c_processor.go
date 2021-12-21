@@ -4,7 +4,6 @@ package client
 
 import (
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -42,7 +41,7 @@ const (
 func (c *QQClient) c2cMessageSyncProcessor(rsp *msg.GetMessageResponse, info *incomingPacketInfo) {
 	c.syncCookie = rsp.SyncCookie
 	c.pubAccountCookie = rsp.PubAccountCookie
-	c.msgCtrlBuf = rsp.MsgCtrlBuf
+	// c.msgCtrlBuf = rsp.MsgCtrlBuf
 	if rsp.UinPairMsgs == nil {
 		return
 	}
@@ -104,9 +103,9 @@ func privateMessageDecoder(c *QQClient, pMsg *msg.Message, _ *incomingPacketInfo
 	case 11, 175: // friend msg
 		if pMsg.Head.GetFromUin() == c.Uin {
 			for {
-				frdSeq := atomic.LoadInt32(&c.friendSeq)
+				frdSeq := c.friendSeq.Load()
 				if frdSeq < pMsg.Head.GetMsgSeq() {
-					if atomic.CompareAndSwapInt32(&c.friendSeq, frdSeq, pMsg.Head.GetMsgSeq()) {
+					if c.friendSeq.CAS(frdSeq, pMsg.Head.GetMsgSeq()) {
 						break
 					}
 				} else {
