@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"crypto/md5"
 	"fmt"
 	"math/rand"
@@ -50,7 +49,7 @@ type QQClient struct {
 
 	// protocol public field
 	SequenceId              atomic.Int32
-	SessionId   []byte
+	SessionId               []byte
 	OutGoingPacketSessionId []byte
 	RandomKey               []byte
 	ConnectTime             time.Time
@@ -164,22 +163,20 @@ func NewClientEmpty() *QQClient {
 
 func NewClientMd5(uin int64, passwordMd5 [16]byte) *QQClient {
 	cli := &QQClient{
-		Uin:                     uin,
-		PasswordMd5:             passwordMd5,
-		AllowSlider:             true,
-		RandomKey:               make([]byte, 16),
+		Uin:         uin,
+		PasswordMd5: passwordMd5,
+		AllowSlider: true,
+		RandomKey:   make([]byte, 16),
 		sig: &auth.SigInfo{
 			OutPacketSessionID: []byte{0x02, 0xB0, 0x5B, 0x8B},
 		},
 		OutGoingPacketSessionId: []byte{0x02, 0xB0, 0x5B, 0x8B},
 		Logger:                  nopLogger{},
-		sigInfo:                 &auth.SigInfo{},
 		EventHandler:            nopHandlers,
 		msgSvcCache:             utils.NewCache(time.Second * 15),
 		transCache:              utils.NewCache(time.Second * 15),
 		onlinePushCache:         utils.NewCache(time.Second * 15),
 		servers:                 []*net.TCPAddr{},
-		ecdh:                    crypto.NewEcdh(),
 		highwaySession:          new(highway.Session),
 
 		version:    new(auth.AppVersion),
@@ -261,7 +258,6 @@ func (c *QQClient) UseDevice(info *auth.Device) {
 	c.sig.Ksid = []byte(fmt.Sprintf("|%s|A8.2.7.27f6ea96", info.IMEI))
 }
 
-
 // Login send login request
 func (c *QQClient) Login() (*LoginResponse, error) {
 	if c.Online.Load() {
@@ -317,13 +313,13 @@ func (c *QQClient) ReLogin() error {
 func (c *QQClient) DumpToken() []byte {
 	return binary.NewWriterF(func(w *binary.Writer) {
 		w.WriteUInt64(uint64(c.Uin))
-		w.WriteBytesShort(c.sigInfo.D2)
-		w.WriteBytesShort(c.sigInfo.D2Key)
-		w.WriteBytesShort(c.sigInfo.TGT)
-		w.WriteBytesShort(c.sigInfo.SrmToken)
-		w.WriteBytesShort(c.sigInfo.T133)
-		w.WriteBytesShort(c.sigInfo.EncryptedA1)
-		w.WriteBytesShort(c.sigInfo.WtSessionTicketKey)
+		w.WriteBytesShort(c.sig.D2)
+		w.WriteBytesShort(c.sig.D2Key)
+		w.WriteBytesShort(c.sig.TGT)
+		w.WriteBytesShort(c.sig.SrmToken)
+		w.WriteBytesShort(c.sig.T133)
+		w.WriteBytesShort(c.sig.EncryptedA1)
+		w.WriteBytesShort(c.oicq.WtSessionTicketKey)
 		w.WriteBytesShort(c.OutGoingPacketSessionId)
 		w.WriteBytesShort(c.deviceInfo.TgtgtKey)
 	})
@@ -986,7 +982,7 @@ func (c *QQClient) doHeartbeat() {
 	for range ticker.C {
 		if !c.Online.Load() {
 			ticker.Stop()
-			return
+			return // 下线停止goroutine，for gc
 		}
 		seq := c.nextSeq()
 		req := network.Request{
@@ -998,10 +994,12 @@ func (c *QQClient) doHeartbeat() {
 			Body:        EmptyBytes,
 		}
 		packet := c.transport.PackPacket(&req)
-		_, err := c.sendAndWait(seq, packet)
-		if errors.Is(err, network.ErrConnectionClosed) {
-			continue
-		}
+		_, _ = c.sendAndWait(seq, packet)
+		//if err != nil {
+		//	if errors.Is(err, ErrNotConnected) {
+		//		continue
+		//	}
+		//}
 		times++
 		if times >= 7 {
 			c.sendAndWait(c.buildRequestChangeSigPacket(c.version.MainSigMap))

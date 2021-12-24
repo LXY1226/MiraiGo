@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"runtime"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -205,7 +204,7 @@ func (c *QQClient) Disconnect() {
 }
 
 // sendAndWait 向服务器发送一个数据包, 并等待返回
-func (c *QQClient) sendAndWait(seq uint16, pkt []byte, params ...requestParams) (interface{}, error) {
+func (c *QQClient) sendAndWait(seq uint16, pkt []byte, params ...network.RequestParams) (interface{}, error) {
 	// 整个sendAndWait使用同一个connection防止串线
 	conn := c.getConn()
 	type T struct {
@@ -324,7 +323,7 @@ func (c *QQClient) sendAndWaitDynamic(seq uint16, pkt []byte) ([]byte, error) {
 //}
 
 // unexpectedDisconnect 非预期断线事件
-func (c *QQClient) unexpectedDisconnect(_ *network.TCPListener, e error) {
+func (c *QQClient) unexpectedDisconnect(e error) {
 	c.Error("unexpected disconnect: %v", e)
 	c.stat.DisconnectTimes.Add(1)
 	c.Online.Store(false)
@@ -362,7 +361,7 @@ func readPacket(conn *net.TCPConn, minSize, maxSize uint32) ([]byte, error) {
 func (c *QQClient) netLoop(conn *net.TCPConn) {
 	defer func() {
 		if r := recover(); r != nil {
-			c.Error("netLoop %v", r)
+			c.Error("netLoop %+v", r)
 		}
 		_ = conn.Close()
 	}()
@@ -376,7 +375,7 @@ func (c *QQClient) netLoop(conn *net.TCPConn) {
 			}
 			return
 		}
-		pkt, err := packets.ParseIncomingPacket(data, c.sigInfo.D2Key)
+		pkt, err := packets.ParseIncomingPacket(data, c.sig.D2Key)
 		if err != nil {
 			if errors.Is(err, packets.ErrSessionExpired) || errors.Is(err, packets.ErrPacketDropped) {
 				c.Disconnect()
