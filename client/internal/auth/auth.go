@@ -27,8 +27,8 @@ type AppVersion struct {
 	Protocol        Protocol
 }
 
-func (p Protocol) Version() *AppVersion {
-	switch p {
+func (i Protocol) Version() *AppVersion {
+	switch i {
 	case AndroidPhone: // Dumped by mirai from qq android v8.8.38
 		return &AppVersion{
 			ApkId:           "com.tencent.mobileqq",
@@ -42,7 +42,7 @@ func (p Protocol) Version() *AppVersion {
 			MiscBitmap:      184024956,
 			SubSigmap:       0x10400,
 			MainSigMap:      34869472,
-			Protocol:        p,
+			Protocol:        i,
 		}
 	case AndroidWatch:
 		return &AppVersion{
@@ -57,7 +57,7 @@ func (p Protocol) Version() *AppVersion {
 			MiscBitmap:      16252796,
 			SubSigmap:       0x10400,
 			MainSigMap:      34869472,
-			Protocol:        p,
+			Protocol:        i,
 		}
 	case IPad:
 		return &AppVersion{
@@ -72,7 +72,7 @@ func (p Protocol) Version() *AppVersion {
 			MiscBitmap:      150470524,
 			SubSigmap:       66560,
 			MainSigMap:      1970400,
-			Protocol:        p,
+			Protocol:        i,
 		}
 	case MacOS:
 		return &AppVersion{
@@ -87,7 +87,7 @@ func (p Protocol) Version() *AppVersion {
 			MiscBitmap:      150470524,
 			SubSigmap:       66560,
 			MainSigMap:      1970400,
-			Protocol:        p,
+			Protocol:        i,
 		}
 	case QiDian:
 		return &AppVersion{
@@ -102,7 +102,7 @@ func (p Protocol) Version() *AppVersion {
 			MiscBitmap:      49807228,
 			SubSigmap:       66560,
 			MainSigMap:      34869472,
-			Protocol:        p,
+			Protocol:        i,
 		}
 	}
 	return nil
@@ -113,18 +113,39 @@ type SigInfo struct {
 	TGT         []byte
 	TGTKey      []byte
 
-	SrmToken           []byte // study room manager | 0x16a
-	T133               []byte
-	EncryptedA1        []byte
-	UserStKey          []byte
-	UserStWebSig       []byte
-	SKey               []byte
-	SKeyExpiredTime    int64
-	D2                 []byte
-	D2Key              []byte
-	WtSessionTicketKey []byte
-	DeviceToken        []byte
+	SrmToken        []byte // study room manager | 0x16a
+	T133            []byte
+	EncryptedA1     []byte
+	UserStKey       []byte
+	UserStWebSig    []byte
+	SKey            []byte
+	SKeyExpiredTime int64
+	D2              []byte
+	D2Key           []byte
+	DeviceToken     []byte
 
 	PsKeyMap    map[string][]byte
 	Pt4TokenMap map[string][]byte
+
+	// Others
+	OutPacketSessionID []byte
+	Dpwd               []byte
+
+	// tlv cache
+	T104     []byte
+	T174     []byte
+	G        []byte
+	T402     []byte
+	RandSeed []byte // t403
+	// rollbackSig []byte
+	// t149        []byte
+	// t150        []byte
+	// t528        []byte
+	// t530        []byte
+
+	// sync info
+	SyncCookie       []byte
+	PubAccountCookie []byte
+	Ksid             []byte
+	// msgCtrlBuf       []byte
 }

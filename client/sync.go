@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Mrs4s/MiraiGo/binary/jce"
+	"github.com/Mrs4s/MiraiGo/client/internal/network"
 	"github.com/Mrs4s/MiraiGo/client/pb/msf"
 	"github.com/Mrs4s/MiraiGo/client/pb/msg"
 	"github.com/Mrs4s/MiraiGo/client/pb/oidb"
@@ -156,11 +157,11 @@ func (c *QQClient) buildGetOfflineMsgRequestPacket() (uint16, []byte) {
 			Channel:          4,
 			Inst:             1,
 			ChannelEx:        1,
-			SyncCookie:       c.syncCookie,
+			SyncCookie:       c.sig.SyncCookie,
 			SyncFlag:         0, // START
 			RambleFlag:       0,
 			GeneralAbi:       1,
-			PubAccountCookie: c.pubAccountCookie,
+			PubAccountCookie: c.sig.PubAccountCookie,
 		},
 		GroupMsg: &jce.SvcReqPullGroupMsgSeq{
 			VerifyType: 0,
@@ -171,7 +172,7 @@ func (c *QQClient) buildGetOfflineMsgRequestPacket() (uint16, []byte) {
 	flag := msg.SyncFlag_START
 	msgReq, _ := proto.Marshal(&msg.GetMessageRequest{
 		SyncFlag:           &flag,
-		SyncCookie:         c.syncCookie,
+		SyncCookie:         c.sig.SyncCookie,
 		RambleFlag:         proto.Int32(0),
 		ContextFlag:        proto.Int32(1),
 		OnlineSyncFlag:     proto.Int32(0),
@@ -223,11 +224,11 @@ func (c *QQClient) buildSyncMsgRequestPacket() (uint16, []byte) {
 			Channel:          4,
 			Inst:             1,
 			ChannelEx:        1,
-			SyncCookie:       c.syncCookie,
+			SyncCookie:       c.sig.SyncCookie,
 			SyncFlag:         0, // START
 			RambleFlag:       0,
 			GeneralAbi:       1,
-			PubAccountCookie: c.pubAccountCookie,
+			PubAccountCookie: c.sig.PubAccountCookie,
 		},
 		GroupMask: 2,
 		EndSeq:    int64(rand.Uint32()),
@@ -236,7 +237,7 @@ func (c *QQClient) buildSyncMsgRequestPacket() (uint16, []byte) {
 	flag := msg.SyncFlag_START
 	msgReq := &msg.GetMessageRequest{
 		SyncFlag:           &flag,
-		SyncCookie:         c.syncCookie,
+		SyncCookie:         c.sig.SyncCookie,
 		RambleFlag:         proto.Int32(0),
 		ContextFlag:        proto.Int32(1),
 		OnlineSyncFlag:     proto.Int32(0),
@@ -247,7 +248,7 @@ func (c *QQClient) buildSyncMsgRequestPacket() (uint16, []byte) {
 	offMsg, _ := proto.Marshal(msgReq)
 	msgReq.MsgReqType = proto.Int32(2)
 	msgReq.SyncCookie = nil
-	msgReq.PubaccountCookie = c.pubAccountCookie
+	msgReq.PubaccountCookie = c.sig.PubAccountCookie
 	pubMsg, _ := proto.Marshal(msgReq)
 	buf := &jce.RequestDataVersion3{Map: map[string][]byte{
 		"req_PbOffMsg": jce.NewJceWriter().WriteBytes(append([]byte{0, 0, 0, 0}, offMsg...), 0).Bytes(),
@@ -279,12 +280,12 @@ func (c *QQClient) buildPrivateMsgReadedPacket(uin, time int64) (uint16, []byte)
 			PeerUin:      proto.Uint64(uint64(uin)),
 			LastReadTime: proto.Uint32(uint32(time)),
 		},
-	}, SyncCookie: c.syncCookie}})
+	}, SyncCookie: c.sig.SyncCookie}})
 	return c.uniPacket("PbMessageSvc.PbMsgReadedReport", req)
 }
 
 // StatSvc.GetDevLoginInfo
-func decodeDevListResponse(_ *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeDevListResponse(_ *QQClient, _ *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	request := &jce.RequestPacket{}
 	request.ReadFrom(jce.NewJceReader(payload))
 	data := &jce.RequestDataVersion2{}
@@ -306,7 +307,7 @@ func decodeDevListResponse(_ *QQClient, _ *incomingPacketInfo, payload []byte) (
 }
 
 // RegPrxySvc.PushParam
-func decodePushParamPacket(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodePushParamPacket(c *QQClient, _ *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	request := &jce.RequestPacket{}
 	request.ReadFrom(jce.NewJceReader(payload))
 	data := &jce.RequestDataVersion2{}
@@ -351,7 +352,7 @@ func decodePushParamPacket(c *QQClient, _ *incomingPacketInfo, payload []byte) (
 }
 
 // RegPrxySvc.PbSyncMsg
-func decodeMsgSyncResponse(c *QQClient, info *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeMsgSyncResponse(c *QQClient, info *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	rsp := &msf.SvcRegisterProxyMsgResp{}
 	if err := proto.Unmarshal(payload, rsp); err != nil {
 		return nil, err
@@ -395,7 +396,7 @@ func decodeMsgSyncResponse(c *QQClient, info *incomingPacketInfo, payload []byte
 }
 
 // OnlinePush.PbC2CMsgSync
-func decodeC2CSyncPacket(c *QQClient, info *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeC2CSyncPacket(c *QQClient, info *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	m := msg.PbPushMsg{}
 	if err := proto.Unmarshal(payload, &m); err != nil {
 		return nil, err
@@ -405,7 +406,7 @@ func decodeC2CSyncPacket(c *QQClient, info *incomingPacketInfo, payload []byte) 
 	return nil, nil
 }
 
-func decodeMsgReadedResponse(_ *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeMsgReadedResponse(_ *QQClient, _ *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	rsp := msg.PbMsgReadedReportResp{}
 	if err := proto.Unmarshal(payload, &rsp); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")
@@ -419,7 +420,7 @@ func decodeMsgReadedResponse(_ *QQClient, _ *incomingPacketInfo, payload []byte)
 var loginNotifyLock sync.Mutex
 
 // StatSvc.SvcReqMSFLoginNotify
-func decodeLoginNotifyPacket(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeLoginNotifyPacket(c *QQClient, _ *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	request := &jce.RequestPacket{}
 	request.ReadFrom(jce.NewJceReader(payload))
 	data := &jce.RequestDataVersion2{}

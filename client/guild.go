@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Mrs4s/MiraiGo/client/internal/network"
 	"github.com/Mrs4s/MiraiGo/topic"
 
 	"github.com/Mrs4s/MiraiGo/client/pb/qweb"
@@ -662,7 +663,7 @@ func (s *GuildService) fetchChannelListState(guildId uint64, channels []*Channel
 			2: ids,
 		},
 	})
-	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x1008_1", 1, s.c.OutGoingPacketSessionId, []byte{}, s.c.sigInfo.d2Key, payload)
+	packet := packets.BuildUniPacket(s.c.Uin, seq, "OidbSvcTrpcTcp.0x1008_1", 1, s.c.SessionId, []byte{}, s.c.sigInfo.d2Key, payload)
 	rsp, err := s.c.sendAndWaitDynamic(seq, packet)
 	if err != nil {
 		return
@@ -737,7 +738,7 @@ func (c *QQClient) buildSyncChannelFirstViewPacket() (uint16, []byte) {
 	return c.uniPacket("trpc.group_pro.synclogic.SyncLogic.SyncFirstView", payload)
 }
 
-func decodeGuildPushFirstView(c *QQClient, _ *incomingPacketInfo, payload []byte) (interface{}, error) {
+func decodeGuildPushFirstView(c *QQClient, _ *network.IncomingPacketInfo, payload []byte) (interface{}, error) {
 	firstViewMsg := new(channel.FirstViewMsg)
 	if err := proto.Unmarshal(payload, firstViewMsg); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal protobuf message")

@@ -31,9 +31,8 @@ type IncomingPacket struct {
 
 func BuildCode2DRequestPacket(seq uint32, j uint64, cmd uint16, bodyFunc func(writer *binary.Writer)) []byte {
 	return binary.NewWriterF(func(w *binary.Writer) {
-		body := binary.NewWriterF(bodyFunc)
 		w.WriteByte(2)
-		w.WriteUInt16(uint16(43 + len(body) + 1))
+		pos := w.FillUInt16()
 		w.WriteUInt16(cmd)
 		w.Write(make([]byte, 21))
 		w.WriteByte(3)
@@ -41,40 +40,9 @@ func BuildCode2DRequestPacket(seq uint32, j uint64, cmd uint16, bodyFunc func(wr
 		w.WriteUInt16(50) // version
 		w.WriteUInt32(seq)
 		w.WriteUInt64(j)
-		w.Write(body)
+		bodyFunc(w)
 		w.WriteByte(3)
-	})
-}
-
-func BuildSsoPacket(seq uint16, appID, subAppID uint32, commandName, imei string, extData, outPacketSessionId, body, ksid []byte) []byte {
-	return binary.NewWriterF(func(p *binary.Writer) {
-		p.WriteIntLvPacket(4, func(writer *binary.Writer) {
-			writer.WriteUInt32(uint32(seq))
-			writer.WriteUInt32(appID)
-			writer.WriteUInt32(subAppID)
-			writer.Write([]byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00})
-			if len(extData) == 0 || len(extData) == 4 {
-				writer.WriteUInt32(0x04)
-			} else {
-				writer.WriteUInt32(uint32(len(extData) + 4))
-				writer.Write(extData)
-			}
-			writer.WriteString(commandName)
-			writer.WriteIntLvPacket(4, func(w *binary.Writer) {
-				w.Write(outPacketSessionId)
-			})
-			writer.WriteString(imei)
-			writer.WriteUInt32(0x04)
-			{
-				writer.WriteUInt16(uint16(len(ksid)) + 2)
-				writer.Write(ksid)
-			}
-			writer.WriteUInt32(0x04)
-		})
-
-		p.WriteIntLvPacket(4, func(writer *binary.Writer) {
-			writer.Write(body)
-		})
+		w.WriteUInt16At(pos, uint16(w.Len()))
 	})
 }
 

@@ -26,7 +26,7 @@ func (c *QQClient) SendPrivateMessage(target int64, m *message.SendingMessage) *
 		}
 	}
 	msgLen := message.EstimateLength(m.Elements)
-	if msgLen > 5000 || imgCount > 50 {
+	if msgLen > message.MaxMessageSize || imgCount > 50 {
 		return nil
 	}
 	if frag && (msgLen > 300 || imgCount > 2) {
@@ -139,7 +139,7 @@ func (c *QQClient) buildGetOneDayRoamMsgRequest(target, lastMsgTime, random int6
 		ReadCnt:     &count,
 	}
 	payload, _ := proto.Marshal(req)
-	packet := packets.BuildUniPacket(c.Uin, seq, "MessageSvc.PbGetOneDayRoamMsg", 1, c.OutGoingPacketSessionId, EmptyBytes, c.sigInfo.d2Key, payload)
+	packet := packets.BuildUniPacket(c.Uin, seq, "MessageSvc.PbGetOneDayRoamMsg", 1, c.SessionId, EmptyBytes, c.sigInfo.d2Key, payload)
 	return seq, packet
 }
 */
