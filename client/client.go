@@ -404,7 +404,11 @@ func (c *QQClient) LoadDevice(device []byte) error {
 	})
 }
 
-func (c *QQClient) FetchQRCode(size, margin, ecLevel uint32) (*QRCodeLoginResponse, error) {
+func (c *QQClient) FetchQRCode() (*QRCodeLoginResponse, error) {
+	return c.FetchQRCodeCustomSize(3, 4, 2)
+}
+
+func (c *QQClient) FetchQRCodeCustomSize(size, margin, ecLevel uint32) (*QRCodeLoginResponse, error) {
 	if c.Online.Load() {
 		return nil, ErrAlreadyOnline
 	}
