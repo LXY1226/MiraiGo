@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Mrs4s/MiraiGo/client/internal/network"
+	"github.com/Mrs4s/MiraiGo/client/internal/oicq"
 	"github.com/Mrs4s/MiraiGo/internal/packets"
 	"github.com/Mrs4s/MiraiGo/utils"
 )
@@ -375,6 +376,7 @@ func (c *QQClient) netLoop(conn *net.TCPConn) {
 			}
 			return
 		}
+		resp, err := c.transport.ReadResponse(data)
 		pkt, err := packets.ParseIncomingPacket(data, c.sig.D2Key)
 		if err != nil {
 			if errors.Is(err, packets.ErrSessionExpired) || errors.Is(err, packets.ErrPacketDropped) {
@@ -389,8 +391,8 @@ func (c *QQClient) netLoop(conn *net.TCPConn) {
 			}
 			continue
 		}
-		if pkt.Flag2 == 2 {
-			m, err := c.oicq.Unmarshal(pkt.Payload)
+		if resp.EncryptType == network.EncryptTypeEmptyKey {
+			m, err := c.oicq.Unmarshal(resp.Body)
 			if err != nil {
 				c.Error("decrypt payload error: %v", err)
 				if errors.Is(err, packets.ErrUnknownFlag) {
@@ -398,11 +400,16 @@ func (c *QQClient) netLoop(conn *net.TCPConn) {
 				}
 				continue
 			}
-			pkt.Payload = m.Body
+			resp.Body = m.Body
 		}
 		errCount = 0
 		c.Debug("rev cmd: %v seq: %v", pkt.CommandName, pkt.SequenceId)
 		c.stat.PacketReceived.Add(1) // 不再需要atomic
+		pkt := &packets.IncomingPacket{
+			SequenceId:  uint16(resp.SequenceID),
+			CommandName: resp.CommandName,
+			Payload:     resp.Body,
+		}
 		go func(pkt *packets.IncomingPacket) {
 			defer func() {
 				if pan := recover(); pan != nil {
