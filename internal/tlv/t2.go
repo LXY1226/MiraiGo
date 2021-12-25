@@ -7,7 +7,7 @@ func T2(result string, sign []byte) []byte {
 		w.WriteUInt16(0x02)
 		pos := w.FillUInt16()
 		w.WriteUInt16(0)
-		w.WriteStringShort(result)
+		w.WriteString16(result)
 		w.WriteBytesShort(sign)
 		w.WriteUInt16At(pos, uint16(w.Len()-4))
 	})

@@ -52,7 +52,7 @@ func T106(uin, salt, appId, ssoVer uint32, passwordMd5 [16]byte, guidAvailable b
 			}
 			w.WriteUInt32(appId)
 			w.WriteUInt32(1) // password login
-			w.WriteStringShort(strconv.FormatInt(int64(uin), 10))
+			w.WriteString16(strconv.FormatInt(int64(uin), 10))
 			w.WriteUInt16(0)
 		})
 		w.EncryptAndWrite(key[:], body)

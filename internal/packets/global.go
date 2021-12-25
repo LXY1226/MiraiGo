@@ -5,7 +5,7 @@ import (
 )
 
 type IncomingPacket struct {
-	SequenceId  uint16
+	SequenceID  uint16
 	Flag2       byte
 	CommandName string
 	SessionId   []byte

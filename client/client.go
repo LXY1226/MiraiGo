@@ -363,7 +363,7 @@ func (c *QQClient) DumpDevice() []byte {
 		w.WriteBytesShort(c.deviceInfo.WifiBSSID)
 		w.WriteBytesShort(c.deviceInfo.WifiSSID)
 		w.WriteBytesShort(c.deviceInfo.IMSIMd5)
-		w.WriteStringShort(c.deviceInfo.IMEI)
+		w.WriteString16(c.deviceInfo.IMEI)
 		w.WriteBytesShort(c.deviceInfo.APN)
 		w.WriteBytesShort(c.deviceInfo.VendorName)
 		w.WriteBytesShort(c.deviceInfo.VendorOSName)
@@ -404,6 +404,7 @@ func (c *QQClient) LoadDevice(device []byte) error {
 	})
 }
 
+// FetchQRCode Deprecated
 func (c *QQClient) FetchQRCode() (*QRCodeLoginResponse, error) {
 	return c.FetchQRCodeCustomSize(3, 4, 2)
 }

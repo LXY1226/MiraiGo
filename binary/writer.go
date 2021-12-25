@@ -77,12 +77,12 @@ func (w *Writer) WriteUInt64(v uint64) {
 	w.Write(b)
 }
 
-func (w *Writer) WriteString(v string) {
+func (w *Writer) WriteString32(v string) {
 	w.WriteUInt32(uint32(len(v) + 4))
 	(*bytes.Buffer)(w).WriteString(v)
 }
 
-func (w *Writer) WriteStringShort(v string) {
+func (w *Writer) WriteString16(v string) {
 	w.WriteUInt16(uint16(len(v)))
 	(*bytes.Buffer)(w).WriteString(v)
 }

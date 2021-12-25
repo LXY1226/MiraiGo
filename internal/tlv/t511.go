@@ -34,7 +34,7 @@ func T511(domains []string) []byte {
 			// indexOf2 := strings.Index(d, ")")
 			// if indexOf != 0 || indexOf2 <= 0 {
 			w.WriteByte(0x01)
-			w.WriteStringShort(d)
+			w.WriteString16(d)
 			/* } else {
 				var b byte
 				var z bool

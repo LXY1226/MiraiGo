@@ -8,7 +8,7 @@ func T177(buildTime uint32, sdkVersion string) []byte {
 		pos := w.FillUInt16()
 		w.WriteByte(0x01)
 		w.WriteUInt32(buildTime)
-		w.WriteStringShort(sdkVersion)
+		w.WriteString16(sdkVersion)
 		w.WriteUInt16At(pos, uint16(w.Len()-4))
 	})
 }
